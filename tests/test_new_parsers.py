@@ -89,8 +89,39 @@ def _assert_matches(parsed, expected: dict) -> None:
         "card_mask": "XX0000",
         "transaction_date": datetime.date(2026, 5, 2),
     }),
+    ("indusind", "indusind/account_upi_credit.txt", {
+        "email_type": "indusind_account_transaction_alert",
+        "direction": "credit",
+        "amount": Decimal("35437.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "9999999999@bank",
+        "reference_number": "000000000000",
+        "channel": "upi",
+        "balance": Decimal("35437.00"),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
     result = parse_sms(bank, body)
     _assert_matches(result, expected)
+
+
+def test_indusind_uses_received_at_for_date_fallback() -> None:
+    """IndusInd body has no date; received_at (UTC→IST) fills transaction_date/time."""
+    body = _read("indusind/account_upi_credit.txt")
+    # 2026-04-30 21:30 UTC == 2026-05-01 03:00 IST
+    received = datetime.datetime(2026, 4, 30, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("indusind", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 5, 1)
+    assert result.transaction.transaction_time == datetime.time(3, 0)
+
+
+def test_indusind_no_received_at_leaves_date_none() -> None:
+    """Without received_at, transaction_date/time stay None — never fabricated."""
+    body = _read("indusind/account_upi_credit.txt")
+    result = parse_sms("indusind", body)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date is None
+    assert result.transaction.transaction_time is None
