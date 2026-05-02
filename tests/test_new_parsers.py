@@ -62,6 +62,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": datetime.date(2026, 5, 2),
         "transaction_time": datetime.time(0, 17, 56),
     }),
+    ("equitas", "equitas/cc_spend.txt", {
+        "email_type": "equitas_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("30.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "CITY REALTY AND DEVELO",
+        "balance": Decimal("99999.99"),
+        "transaction_date": datetime.date(2026, 5, 1),
+        "transaction_time": datetime.time(19, 53, 18),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
