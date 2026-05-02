@@ -81,6 +81,14 @@ def _assert_matches(parsed, expected: dict) -> None:
         "card_mask": "XX0000",
         "transaction_date": datetime.date(2026, 5, 2),
     }),
+    ("idfc", "idfc/cc_payment_received.txt", {
+        "email_type": "idfc_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("3000.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "transaction_date": datetime.date(2026, 5, 2),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
