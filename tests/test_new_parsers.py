@@ -221,3 +221,34 @@ def test_onecard_charge_no_received_at_leaves_date_none() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date is None
     assert result.transaction.transaction_time is None
+
+
+@pytest.mark.parametrize("bank, body", [
+    # HDFC OTP that mimics the spend body's surface form (amount, merchant,
+    # card mask all present) but lacks the discriminating verb "Spent".
+    (
+        "hdfc",
+        "OTP for your Rs.3000 transaction at PZCREDIT0000000 using HDFC "
+        "Bank Card x0000 is 123456. Valid 5 mins. Do not share.",
+    ),
+    # HDFC promotional fluff with the bank name + card mask.
+    (
+        "hdfc",
+        "Get 5% cashback on your next HDFC Card x0000 spend at any partner "
+        "merchant. T&C apply.",
+    ),
+    # Truncated HDFC transaction missing date and balance.
+    (
+        "hdfc",
+        "Spent Rs.3000 From HDFC Bank Card x0000",
+    ),
+    # Equitas service-info SMS that is not a transaction.
+    (
+        "equitas",
+        "Dear Customer, your Equitas CC XX0000 statement is now available. "
+        "Login to view.",
+    ),
+])
+def test_synthetic_adversarial_bodies_raise_parse_error(bank, body) -> None:
+    with pytest.raises(ParseError):
+        parse_sms(bank, body)
