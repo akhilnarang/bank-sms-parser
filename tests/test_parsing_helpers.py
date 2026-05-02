@@ -12,6 +12,11 @@ from bank_sms_parser.parsing.dates import (
     parse_datetime,
     received_at_to_ist,
 )
+from bank_sms_parser.parsing.text import (
+    extract_account_mask,
+    extract_card_mask,
+    normalize_whitespace,
+)
 
 
 class TestParseDate:
@@ -136,3 +141,45 @@ class TestParseMoney:
         # Any 3-letter uppercase ASCII code is accepted as the currency.
         m = parse_money("AED 100")
         assert m.currency == "AED"
+
+
+class TestNormalizeWhitespace:
+    def test_collapses_runs(self) -> None:
+        assert normalize_whitespace("a   b\t\tc\n\nd") == "a b c d"
+
+    def test_strips_leading_and_trailing(self) -> None:
+        assert normalize_whitespace("  hello  ") == "hello"
+
+    def test_empty(self) -> None:
+        assert normalize_whitespace("") == ""
+
+    def test_preserves_single_space(self) -> None:
+        assert normalize_whitespace("a b c") == "a b c"
+
+
+class TestExtractCardMask:
+    @pytest.mark.parametrize("body, expected", [
+        ("HDFC Bank Card x0000 At MERCHANT", "x0000"),
+        ("ICICI Bank Card XX0000 on", "XX0000"),
+        ("ending in XX0000.", "XX0000"),
+        ("Card ending XX0000", "XX0000"),
+        ("Credit Card XX0000 on", "XX0000"),
+    ])
+    def test_matches(self, body: str, expected: str) -> None:
+        assert extract_card_mask(body) == expected
+
+    def test_returns_none_when_absent(self) -> None:
+        assert extract_card_mask("nothing here") is None
+
+
+class TestExtractAccountMask:
+    @pytest.mark.parametrize("body, expected", [
+        ("Acct XX000 debited", "XX000"),
+        ("A/C *XX0000 credited", "XX0000"),
+        ("Account XX1234 has been", "XX1234"),
+    ])
+    def test_matches(self, body: str, expected: str) -> None:
+        assert extract_account_mask(body) == expected
+
+    def test_returns_none_when_absent(self) -> None:
+        assert extract_account_mask("nothing here") is None
