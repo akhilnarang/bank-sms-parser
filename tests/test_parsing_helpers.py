@@ -1,9 +1,12 @@
 """Tests for parsing helpers (dates, amounts, text)."""
 
 import datetime
+from decimal import Decimal
 
 import pytest
 from bank_sms_parser.exceptions import ParseError
+from bank_sms_parser.models import Money
+from bank_sms_parser.parsing.amounts import parse_amount, parse_money
 from bank_sms_parser.parsing.dates import (
     parse_date,
     parse_datetime,
@@ -83,3 +86,53 @@ class TestReceivedAtToIst:
     def test_naive_input_raises(self) -> None:
         with pytest.raises(ParseError):
             received_at_to_ist(datetime.datetime(2026, 5, 1, 21, 0, 0))
+
+
+class TestParseAmount:
+    @pytest.mark.parametrize("s, expected", [
+        ("1,604.00", Decimal("1604.00")),
+        ("99,99,999.99", Decimal("9999999.99")),  # Indian grouping
+        ("35437.00", Decimal("35437.00")),
+        ("3000", Decimal("3000")),
+        ("99,999.99", Decimal("99999.99")),
+    ])
+    def test_bare_numeric(self, s: str, expected: Decimal) -> None:
+        assert parse_amount(s) == expected
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ParseError):
+            parse_amount("")
+
+    def test_non_numeric_raises(self) -> None:
+        with pytest.raises(ParseError):
+            parse_amount("abc")
+
+
+class TestParseMoney:
+    @pytest.mark.parametrize("s, amount, currency", [
+        ("Rs.3000", Decimal("3000"), "INR"),
+        ("Rs 3000", Decimal("3000"), "INR"),
+        ("Rs. 1.00", Decimal("1.00"), "INR"),
+        ("INR 15000", Decimal("15000"), "INR"),
+        ("INR. 99,999.99", Decimal("99999.99"), "INR"),
+        ("USD 106.20", Decimal("106.20"), "USD"),
+        ("EUR 50.00", Decimal("50.00"), "EUR"),
+        ("GBP 10", Decimal("10"), "GBP"),
+    ])
+    def test_with_prefix(self, s: str, amount: Decimal, currency: str) -> None:
+        m = parse_money(s)
+        assert m == Money(amount=amount, currency=currency)
+
+    def test_bare_numeric_raises(self) -> None:
+        # parse_money REQUIRES a currency prefix — bare numerics are parse_amount's job.
+        with pytest.raises(ParseError):
+            parse_money("3000")
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ParseError):
+            parse_money("")
+
+    def test_unknown_three_letter_code_accepted(self) -> None:
+        # Any 3-letter uppercase ASCII code is accepted as the currency.
+        m = parse_money("AED 100")
+        assert m.currency == "AED"
