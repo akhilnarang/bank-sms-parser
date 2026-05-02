@@ -100,6 +100,27 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "upi",
         "balance": Decimal("35437.00"),
     }),
+    ("icici", "icici/account_imps_debit.txt", {
+        "email_type": "icici_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("10000.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "Acct XX001",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "transaction_date": datetime.date(2026, 5, 2),
+    }),
+    ("icici", "icici/cc_spend.txt", {
+        "email_type": "icici_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("1604.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "ONYX BAR",
+        "balance": Decimal("9999999.99"),
+        "transaction_date": datetime.date(2026, 5, 1),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
