@@ -1,0 +1,49 @@
+[project]
+name = "bank-sms-parser"
+version = "0.1.0"
+description = "Parse Indian bank transaction-alert SMS bodies into structured data"
+readme = "README.md"
+authors = [
+    { name = "Akhil Narang", email = "me@akhilnarang.dev" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic>=2.0",
+    "python-dateutil>=2.9.0.post0",
+    "typer>=0.16.0",
+]
+
+[project.scripts]
+bank-sms-parser = "bank_sms_parser.cli:app"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["bank_sms_parser"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.9",
+    "ty>=0.0.29",
+]
+
+[tool.ruff]
+target-version = "py314"
+src = ["bank_sms_parser", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+ignore = ["B008", "E501"]
+
+[tool.ty.environment]
+python-version = "3.14"
+root = ["."]
+
+[tool.ty.analysis]
+replace-imports-with-any = ["dateutil", "dateutil.**"]
