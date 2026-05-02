@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from bank_sms_parser import parse_sms
+from bank_sms_parser.exceptions import ParseError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "sms"
 
@@ -121,11 +122,66 @@ def _assert_matches(parsed, expected: dict) -> None:
         "balance": Decimal("9999999.99"),
         "transaction_date": datetime.date(2026, 5, 1),
     }),
+    ("onecard", "onecard/cc_charge_bill_cleared.txt", {
+        "email_type": "onecard_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("1.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "Times Prime",
+    }),
+    ("onecard", "onecard/cc_charge_spent.txt", {
+        "email_type": "onecard_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("2809.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "Zepto Marketplace Priv",
+    }),
+    ("onecard", "onecard/cc_charge_paid_usd.txt", {
+        "email_type": "onecard_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("106.20"),
+        "currency": "USD",
+        "card_mask": "XX0000",
+        "counterparty": "Nanonoble Pte. Ltd.",
+    }),
+    ("onecard", "onecard/cc_payment_received_10000.txt", {
+        "email_type": "onecard_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("10000.00"),
+        "currency": "INR",
+        "transaction_date": datetime.date(2026, 4, 29),
+    }),
+    ("onecard", "onecard/cc_payment_received_1050.txt", {
+        "email_type": "onecard_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("1050.00"),
+        "currency": "INR",
+        "transaction_date": datetime.date(2026, 4, 28),
+    }),
+    ("onecard", "onecard/cc_payment_received_1799.txt", {
+        "email_type": "onecard_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("1799.94"),
+        "currency": "INR",
+        "transaction_date": datetime.date(2026, 4, 25),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
     result = parse_sms(bank, body)
     _assert_matches(result, expected)
+
+
+@pytest.mark.parametrize("bank, fixture", [
+    ("onecard", "onecard/negative/limit_update.txt"),
+    ("onecard", "onecard/negative/statement_ready.txt"),
+])
+def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:
+    body = _read(fixture)
+    with pytest.raises(ParseError):
+        parse_sms(bank, body)
 
 
 def test_indusind_uses_received_at_for_date_fallback() -> None:
@@ -143,6 +199,25 @@ def test_indusind_no_received_at_leaves_date_none() -> None:
     """Without received_at, transaction_date/time stay None — never fabricated."""
     body = _read("indusind/account_upi_credit.txt")
     result = parse_sms("indusind", body)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date is None
+    assert result.transaction.transaction_time is None
+
+
+def test_onecard_charge_uses_received_at_for_date_fallback() -> None:
+    """OneCard charge bodies carry no date; received_at (UTC→IST) fills it."""
+    body = _read("onecard/cc_charge_spent.txt")
+    # 2026-04-13 21:30 UTC == 2026-04-14 03:00 IST
+    received = datetime.datetime(2026, 4, 13, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("onecard", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 4, 14)
+    assert result.transaction.transaction_time == datetime.time(3, 0)
+
+
+def test_onecard_charge_no_received_at_leaves_date_none() -> None:
+    body = _read("onecard/cc_charge_spent.txt")
+    result = parse_sms("onecard", body)
     assert result.transaction is not None
     assert result.transaction.transaction_date is None
     assert result.transaction.transaction_time is None

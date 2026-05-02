@@ -6,6 +6,7 @@ from bank_sms_parser.parsers.hdfc import HdfcParser
 from bank_sms_parser.parsers.icici import IciciParser
 from bank_sms_parser.parsers.idfc import IdfcParser
 from bank_sms_parser.parsers.indusind import IndusindParser
+from bank_sms_parser.parsers.onecard import OnecardParser
 
 PARSERS: dict[str, type] = {
     "axis": AxisParser,
@@ -14,6 +15,7 @@ PARSERS: dict[str, type] = {
     "icici": IciciParser,
     "idfc": IdfcParser,
     "indusind": IndusindParser,
+    "onecard": OnecardParser,
 }
 
 __all__ = ["PARSERS"]
