@@ -4,7 +4,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from bank_sms_parser.models import Money, SmsTransactionAlert
+from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from pydantic import ValidationError
 
 
@@ -99,3 +99,31 @@ class TestSmsTransactionAlert:
         )
         assert t.transaction_date == datetime.date(2026, 5, 2)
         assert t.channel == "card"
+
+
+class TestParsedSms:
+    def test_minimal(self) -> None:
+        p = ParsedSms(email_type="hdfc_dc_transaction_alert", bank="hdfc")
+        assert p.email_type == "hdfc_dc_transaction_alert"
+        assert p.bank == "hdfc"
+        assert p.transaction is None
+
+    def test_with_transaction(self) -> None:
+        p = ParsedSms(
+            email_type="hdfc_dc_transaction_alert",
+            bank="hdfc",
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=Decimal("100")),
+            ),
+        )
+        assert p.transaction is not None
+        assert p.transaction.direction == "debit"
+
+    def test_email_type_required(self) -> None:
+        with pytest.raises(ValidationError):
+            ParsedSms(bank="hdfc")  # type: ignore[call-arg]  # ty: ignore[missing-argument]
+
+    def test_bank_required(self) -> None:
+        with pytest.raises(ValidationError):
+            ParsedSms(email_type="hdfc_dc_transaction_alert")  # type: ignore[call-arg]  # ty: ignore[missing-argument]

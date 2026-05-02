@@ -29,3 +29,9 @@ class SmsTransactionAlert(BaseModel):
         repr=False,
         description="Debug-only raw parser context; excluded from serialized output by default.",
     )
+
+
+class ParsedSms(BaseModel):
+    email_type: str
+    bank: str
+    transaction: SmsTransactionAlert | None = None
