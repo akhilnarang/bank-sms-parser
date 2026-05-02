@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from importlib import import_module
 from pathlib import Path
 
+import pytest
 from bank_sms_parser.api import SUPPORTED_BANKS
 from bank_sms_parser.parsers import PARSERS
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
@@ -80,16 +81,9 @@ def test_bank_module_exposes_dispatcher_and_parse() -> None:
         assert callable(module.parse)
 
 
-def test_module_level_parse_forwards_kwargs(monkeypatch) -> None:
-    """The bank module's `parse(body, *, sender, received_at)` must forward both kwargs.
-
-    Replace the dispatcher class in the module's namespace with a recording
-    stub, then call `module.parse(...)` and verify both kwargs reached the
-    inner parser. Module-level `parse()` is defined as
-    ``return {Bank}Parser().parse(...)``; Python looks up `{Bank}Parser` in
-    the module's global namespace at call time, so monkeypatching the name
-    redirects the call.
-    """
+@pytest.mark.parametrize("slug, dispatcher_cls", list(PARSERS.items()))
+def test_module_level_parse_forwards_kwargs(slug, dispatcher_cls, monkeypatch) -> None:
+    """For each bank, the module-level `parse(body, *, sender, received_at)` forwards both kwargs."""
     import datetime
     from decimal import Decimal
 
@@ -117,13 +111,8 @@ def test_module_level_parse_forwards_kwargs(monkeypatch) -> None:
         bank = "stub"
         parsers = (_RecordingParser(),)
 
-    # Pick the first registered bank and patch its dispatcher class by NAME
-    # in its own module's namespace. The module-level `parse(...)` looks up
-    # the dispatcher by its bare class name (`HdfcParser`, `IciciParser`,
-    # ...) at call time, so this redirects the actual `parse()` invocation.
-    slug = next(iter(PARSERS))
     module = import_module(f"bank_sms_parser.parsers.{slug}")
-    dispatcher_class_name = PARSERS[slug].__name__
+    dispatcher_class_name = dispatcher_cls.__name__
     monkeypatch.setattr(module, dispatcher_class_name, _StubDispatcher)
 
     ts = datetime.datetime(2026, 5, 2, 14, 23, 11, tzinfo=datetime.UTC)
