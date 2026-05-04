@@ -63,6 +63,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": datetime.date(2026, 5, 2),
         "transaction_time": datetime.time(0, 17, 56),
     }),
+    ("hdfc", "hdfc/cc_spend.txt", {
+        "email_type": "hdfc_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("10290"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "counterparty": "EAZYDINE0000000",
+        "transaction_date": datetime.date(2026, 5, 2),
+        "transaction_time": datetime.time(22, 26, 1),
+        "channel": "card",
+    }),
     ("equitas", "equitas/cc_spend.txt", {
         "email_type": "equitas_cc_transaction_alert",
         "direction": "debit",

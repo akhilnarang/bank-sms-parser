@@ -2,6 +2,7 @@
 
 Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
+- hdfc_cc_transaction_alert: Credit-card POS/online spend
 """
 
 import datetime
@@ -66,8 +67,59 @@ class HdfcDcTransactionAlertParser(BaseSmsParser):
         )
 
 
+class HdfcCcTransactionAlertParser(BaseSmsParser):
+    """HDFC credit-card spend alert.
+
+    Sample:
+        "Spent Rs.10290 On HDFC Bank Card 0000 At MERCHANT On
+         2026-05-02:22:26:01.Not You? To Block+Reissue Call ..."
+
+    Discriminators vs the debit-card shape:
+    - "On HDFC Bank Card" (CC) vs "From HDFC Bank Card" (DC).
+    - Bare 4-digit card mask, no "x" prefix.
+    - No "Bal Rs." trailer; the datetime is followed by a literal period.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_cc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"Spent\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"On\s+HDFC\s+Bank\s+Card\s+(?P<card>\d+)\s+"
+        r"At\s+(?P<merchant>\S+)\s+"
+        r"On\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})\."
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        match = self._PATTERN.search(text)
+        if not match:
+            raise ParseError("HDFC CC transaction alert pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("merchant"),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
+    HdfcCcTransactionAlertParser(),
 )
 
 
