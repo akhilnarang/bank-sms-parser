@@ -4,6 +4,7 @@ Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
 - hdfc_cc_refund_alert: Credit-card UPI refund credit
+- hdfc_account_transaction_alert: Savings account IMPS credit
 """
 
 import datetime
@@ -167,10 +168,67 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
         )
 
 
+class HdfcAccountTransactionAlertParser(BaseSmsParser):
+    """HDFC savings/current-account IMPS credit alert.
+
+    Sample (multi-line in the wire body; whitespace is normalized first):
+        "Received!
+         INR 35,437.00 in HDFC Bank A/c xx0000
+         On 03-05-26
+         For IMPS -Customer- 000000000000
+         Avl bal INR 35,579.26"
+
+    The counterparty is the IMPS originator's name; for self-transfers
+    that is the user's own name. Account-mask casing matches the body
+    (lowercase ``xx``).
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"Received!\s+"
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"in\s+HDFC\s+Bank\s+A/c\s+(?P<account>xx\d+)\s+"
+        r"On\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
+        r"For\s+IMPS\s+-(?P<counterparty>[^-]+)-\s+(?P<ref>\d+)\s+"
+        r"Avl\s+bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        match = self._PATTERN.search(text)
+        if not match:
+            raise ParseError("HDFC account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("counterparty").strip(),
+                reference_number=match.group("ref"),
+                channel="imps",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     HdfcCcTransactionAlertParser(),
     HdfcCcRefundAlertParser(),
+    HdfcAccountTransactionAlertParser(),
 )
 
 
