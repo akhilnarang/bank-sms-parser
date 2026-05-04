@@ -9,25 +9,44 @@ from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
     normalize_whitespace,
     parse_amount,
+    parse_date,
     received_at_to_ist,
 )
 
 
 class IndusindAccountTransactionAlertParser(BaseSmsParser):
-    """IndusInd savings/current-account UPI alert.
+    """IndusInd savings/current-account transaction alert.
 
-    Sample (carries no date — uses ``received_at`` fallback if provided):
+    Two body shapes share this event type — same downstream meaning,
+    different bank phrasings (mirrors the OneCard charge precedent of
+    multiple compiled regexes in a single class):
+
+    1) UPI alert (carries no in-body date — uses ``received_at`` fallback):
         "A/C *XX0000 credited by Rs 35437.00 from VPA@bank.
          RRN:000000000000. Avl Bal:35437.00. ..."
+
+    2) IMPS transfer (carries an in-body DD-MM-YY date and the
+       destination account/name):
+        "Your account XXXXXXX0000 debited with Rs. 35437 on 03-05-26
+         and account XXXXXXX0001/Customer will be credited.
+         (IMPS Ref no. 000000000000). ..."
     """
 
     bank = "indusind"
     email_type = "indusind_account_transaction_alert"
 
-    _PATTERN = re.compile(
+    _UPI_PATTERN = re.compile(
         r"A/C\s+\*(?P<account>XX\d+)\s+(?P<verb>credited|debited)\s+by\s+Rs\s+"
         r"(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+(?P<vpa>\S+)\.\s+"
         r"RRN:(?P<rrn>\d+)\.\s+Avl\s+Bal:(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    _IMPS_PATTERN = re.compile(
+        r"Your\s+account\s+(?P<account>X+\d+)\s+(?P<verb>debited|credited)\s+with\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
+        r"and\s+account\s+(?P<dest>X+\d+)/(?P<dest_name>[^.]+?)\s+will\s+be\s+credited\.\s*"
+        r"\(IMPS\s+Ref\s+no\.\s*(?P<ref>\d+)\)"
     )
 
     def parse(
@@ -38,9 +57,24 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
-            raise ParseError("IndusInd account UPI alert pattern did not match")
+
+        match = self._UPI_PATTERN.search(text)
+        if match:
+            return self._build_upi(match, received_at)
+
+        match = self._IMPS_PATTERN.search(text)
+        if match:
+            return self._build_imps(match)
+
+        raise ParseError(
+            "IndusInd account transaction alert: no known pattern matched"
+        )
+
+    def _build_upi(
+        self,
+        match: re.Match[str],
+        received_at: datetime.datetime | None,
+    ) -> ParsedSms:
         direction = "credit" if match.group("verb") == "credited" else "debit"
         txn_date: datetime.date | None = None
         txn_time: datetime.time | None = None
@@ -62,6 +96,22 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
                 balance=Money(
                     amount=parse_amount(match.group("balance")), currency="INR"
                 ),
+                account_mask=match.group("account"),
+            ),
+        )
+
+    def _build_imps(self, match: re.Match[str]) -> ParsedSms:
+        direction = "debit" if match.group("verb") == "debited" else "credit"
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction=direction,
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Acct {match.group('dest')}/{match.group('dest_name').strip()}",
+                reference_number=match.group("ref"),
+                channel="imps",
                 account_mask=match.group("account"),
             ),
         )
