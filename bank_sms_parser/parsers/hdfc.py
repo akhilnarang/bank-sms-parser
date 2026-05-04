@@ -3,6 +3,7 @@
 Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
+- hdfc_cc_refund_alert: Credit-card UPI refund credit
 """
 
 import datetime
@@ -14,6 +15,7 @@ from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
     normalize_whitespace,
     parse_amount,
+    parse_date,
     parse_datetime,
 )
 
@@ -117,9 +119,58 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         )
 
 
+class HdfcCcRefundAlertParser(BaseSmsParser):
+    """HDFC credit-card UPI refund credit.
+
+    Sample:
+        "Alert! Rs. 254 refunded by UPI CC-27-04-2026-000000000000 on
+         01/MAY/2026 & adjusted against HDFC Bank Credit Card 0000
+         View updated balance here: https://..."
+
+    The CC reference embeds the original spend's date and UTR; the
+    parser captures the trailing UTR digits as ``reference_number``.
+    ``transaction_date`` is the refund date, not the original spend date.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_cc_refund_alert"
+
+    _PATTERN = re.compile(
+        r"Alert!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"refunded\s+by\s+UPI\s+CC-\d{2}-\d{2}-\d{4}-(?P<ref>\d+)\s+"
+        r"on\s+(?P<date>\d{1,2}/[A-Za-z]+/\d{4})\s+"
+        r"&\s+adjusted\s+against\s+HDFC\s+Bank\s+Credit\s+Card\s+(?P<card>\d+)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        match = self._PATTERN.search(text)
+        if not match:
+            raise ParseError("HDFC CC refund alert pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                reference_number=match.group("ref"),
+                card_mask=match.group("card"),
+                channel="upi",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     HdfcCcTransactionAlertParser(),
+    HdfcCcRefundAlertParser(),
 )
 
 

@@ -74,6 +74,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_time": datetime.time(22, 26, 1),
         "channel": "card",
     }),
+    ("hdfc", "hdfc/cc_refund.txt", {
+        "email_type": "hdfc_cc_refund_alert",
+        "direction": "credit",
+        "amount": Decimal("254"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "channel": "upi",
+        "reference_number": "000000000000",
+        "transaction_date": datetime.date(2026, 5, 1),
+    }),
     ("equitas", "equitas/cc_spend.txt", {
         "email_type": "equitas_cc_transaction_alert",
         "direction": "debit",
