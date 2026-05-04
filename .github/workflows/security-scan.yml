@@ -1,0 +1,21 @@
+name: security-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: semgrep (advisory)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: scan
+        run: semgrep scan --config=p/secrets --config=p/python --error --metrics=off
+        continue-on-error: true
