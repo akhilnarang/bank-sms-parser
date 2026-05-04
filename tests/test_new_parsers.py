@@ -123,6 +123,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "card_mask": "XX0000",
         "transaction_date": datetime.date(2026, 5, 2),
     }),
+    ("idfc", "idfc/account_spend.txt", {
+        "email_type": "idfc_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("2448.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "INSTAMART",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 5, 4),
+    }),
     ("indusind", "indusind/account_upi_credit.txt", {
         "email_type": "indusind_account_transaction_alert",
         "direction": "credit",
