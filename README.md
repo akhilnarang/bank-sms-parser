@@ -20,7 +20,11 @@ print(result.transaction.amount)    # Money(amount=Decimal("3000"), currency="IN
 ## CLI
 
 ```bash
-echo "<sms body>" | uv run bank-sms-parser --bank hdfc
+# Parse an SMS body for a specific bank
+echo "<sms body>" | uv run bank-sms-parser parse --bank hdfc
+
+# List all supported banks
+uv run bank-sms-parser banks
 ```
 
 ## Adding a new bank

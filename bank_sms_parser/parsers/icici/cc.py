@@ -14,7 +14,7 @@ class IciciCcTransactionAlertParser(BaseSmsParser):
 
     Sample:
         "INR 1,604.00 spent using ICICI Bank Card XX0000 on 01-May-26
-         on ONYX BAR. Avl Limit: INR 99,99,999.99. ..."
+         on MERCHANT. Avl Limit: INR 99,99,999.99. ..."
     """
 
     bank = "icici"
