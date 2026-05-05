@@ -22,12 +22,12 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
     multiple compiled regexes in a single class):
 
     1) UPI alert (carries no in-body date — uses ``received_at`` fallback):
-        "A/C *XX0000 credited by Rs 35437.00 from VPA@bank.
-         RRN:000000000000. Avl Bal:35437.00. ..."
+        "A/C *XX0000 credited by Rs 12345.00 from VPA@bank.
+         RRN:000000000000. Avl Bal:12345.00. ..."
 
     2) IMPS transfer (carries an in-body DD-MM-YY date and the
        destination account/name):
-        "Your account XXXXXXX0000 debited with Rs. 35437 on 03-05-26
+        "Your account XXXXXXX0000 debited with Rs. 12345 on 03-05-26
          and account XXXXXXX0001/Customer will be credited.
          (IMPS Ref no. 000000000000). ..."
     """
@@ -117,7 +117,79 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
-_PARSERS: tuple[BaseSmsParser, ...] = (IndusindAccountTransactionAlertParser(),)
+class IndusindAccountUpiCreditAlertParser(BaseSmsParser):
+    """IndusInd savings/current-account UPI credit alert.
+
+    Body shape (carries no in-body date — uses ``received_at`` fallback):
+        "A/C *XX0000 credited by Rs 12345.00 from 9999999999@samplevpa.
+         RRN:999999999999. Avl Bal:12345.00. Not you? Call 18602677777
+         - IndusInd bank"
+
+    Specific to the UPI inbound shape: account mask, ``credited by``
+    verb, source VPA, RRN, and Avl Bal are all required. The verb is
+    intentionally restricted to ``credited`` so the IMPS debit shape
+    (``debited with`` plus an in-body date) cannot accidentally match.
+    """
+
+    bank = "indusind"
+    email_type = "indusind_account_upi_credit_alert"
+
+    _PATTERN = re.compile(
+        r"A/C\s+\*(?P<account>XX\d+)\s+credited\s+by\s+Rs\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+(?P<vpa>\S+?)\.\s+"
+        r"RRN:(?P<rrn>\d+)\.\s+Avl\s+Bal:(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        match = self._PATTERN.search(text)
+        if not match:
+            raise ParseError(
+                "IndusInd account UPI credit alert: pattern did not match"
+            )
+
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                counterparty=match.group("vpa"),
+                reference_number=match.group("rrn"),
+                channel="upi",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+# Order: the new UPI-credit parser is more specific (verb-restricted to
+# "credited") and must run first so it claims UPI inbound traffic; the
+# legacy alert parser still handles the IMPS debit shape (and remains a
+# safety net for the historic UPI regex).
+_PARSERS: tuple[BaseSmsParser, ...] = (
+    IndusindAccountUpiCreditAlertParser(),
+    IndusindAccountTransactionAlertParser(),
+)
 
 
 class IndusindParser(BankSmsParser):

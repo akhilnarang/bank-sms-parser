@@ -173,10 +173,10 @@ class HdfcAccountTransactionAlertParser(BaseSmsParser):
 
     Sample (multi-line in the wire body; whitespace is normalized first):
         "Received!
-         INR 35,437.00 in HDFC Bank A/c xx0000
+         INR 12,345.00 in HDFC Bank A/c xx0000
          On 03-05-26
          For IMPS -Customer- 000000000000
-         Avl bal INR 35,579.26"
+         Avl bal INR 99,999.99"
 
     The counterparty is the IMPS originator's name; for self-transfers
     that is the user's own name. Account-mask casing matches the body

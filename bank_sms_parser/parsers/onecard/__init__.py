@@ -8,13 +8,30 @@ from bank_sms_parser.parsers.onecard.charge import OnecardCcTransactionAlertPars
 from bank_sms_parser.parsers.onecard.payment_received import (
     OnecardCcPaymentReceivedParser,
 )
+from bank_sms_parser.parsers.onecard.service_info import (
+    OnecardCcServiceInfoStubParser,
+)
+from bank_sms_parser.parsers.onecard.statement_notice import (
+    OnecardCcStatementNoticeStubParser,
+)
 
-# Order: payment-received (very narrow anchor "Hola! that was sweet") first;
-# then the broader charge parser. Either order works because anchors are
-# distinct, but specific-first is the convention.
+# Order: real transaction parsers first (most-specific anchors win), then the
+# BOBCARD-One service-info / statement-notice stubs at the very end so they
+# can never shadow a real spend or payment-received SMS.
+#
+# - OnecardCcPaymentReceivedParser anchors on the unique "Hola! that was
+#   sweet" phrase (AX-OneCrd-S sender family); cannot collide with BOBCARD.
+# - OnecardCcTransactionAlertParser handles the three BOBCARD spend phrasings
+#   (bill cleared / spent / paid <CCY>) under a single email_type.
+# - OnecardCcServiceInfoStubParser raises ParserStubError on the BOBCARD
+#   limit-update / service-info shape so we don't fabricate a transaction.
+# - OnecardCcStatementNoticeStubParser raises ParserStubError on the BOBCARD
+#   monthly bill-ready notice (model has no slot for statement notices).
 _PARSERS: tuple[BaseSmsParser, ...] = (
     OnecardCcPaymentReceivedParser(),
     OnecardCcTransactionAlertParser(),
+    OnecardCcStatementNoticeStubParser(),
+    OnecardCcServiceInfoStubParser(),
 )
 
 
@@ -34,6 +51,8 @@ def parse(
 
 __all__ = [
     "OnecardCcPaymentReceivedParser",
+    "OnecardCcServiceInfoStubParser",
+    "OnecardCcStatementNoticeStubParser",
     "OnecardCcTransactionAlertParser",
     "OnecardParser",
     "parse",

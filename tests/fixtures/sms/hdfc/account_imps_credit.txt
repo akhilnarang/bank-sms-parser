@@ -1,5 +1,5 @@
 Received!
-INR 35,437.00 in HDFC Bank A/c xx0000
+INR 12,345.00 in HDFC Bank A/c xx0000
 On 03-05-26
 For IMPS -Customer- 000000000000
-Avl bal INR 35,579.26
+Avl bal INR 99,999.99
