@@ -38,34 +38,54 @@ From each body, identify:
 
 ## Implementation checklist
 
-1. Use `bank_sms_parser/parsing/` helpers (`parse_date`,
-   `parse_datetime`, `parse_amount`, `parse_money`,
-   `normalize_whitespace`, `extract_card_mask`, `extract_account_mask`)
-   before writing ad-hoc regex.
+1. Use `bank_sms_parser/parsing/` helpers before ad-hoc regex:
+   `parse_date`, `parse_datetime`, `parse_amount`, `parse_money`,
+   `received_at_to_ist`, `normalize_whitespace`, `extract_card_mask`,
+   `extract_account_mask`.
 2. Each parser class subclasses `BaseSmsParser` and implements
    `parse(body: str, *, sender: str | None = None,
    received_at: datetime | None = None) -> ParsedSms`.
-3. Each bank module/package owns:
-   - one `BaseSmsParser` subclass per SMS shape with a stable
-     `email_type` string
-   - a `_PARSERS` ordered tuple (first match wins, even when there is
-     only one parser)
-   - a `{Bank}Parser(BankSmsParser)` dispatcher
+3. Build results as
+   `ParsedSms(email_type=..., bank=..., transaction=SmsTransactionAlert(...))`.
+   `SmsTransactionAlert.amount` requires a `Money`. Wrap bare numerics
+   as `Money(amount=parse_amount(match.group("amount")), currency="INR")`;
+   use `parse_money(...)` only when the captured text already contains
+   the currency prefix (`parse_money` itself returns `Money`).
+   `raw_description` is debug-only and excluded from dump/repr — do not
+   stash real SMS content in serialized fields.
+4. Each bank module/package owns:
+   - one `BaseSmsParser` subclass per **distinct** SMS shape with a
+     stable `email_type` string
+   - one parser class with **multiple compiled regexes** for cosmetic
+     phrasings of the same event (e.g. OneCard's "bill cleared" /
+     "spent" / "paid <CCY>" all share
+     `onecard_cc_transaction_alert`) — do not split into one class
+     per phrasing
+   - a `_PARSERS` ordered tuple of parser instances (first match wins,
+     even when there is only one parser)
+   - a `{Bank}Parser(BankSmsParser)` dispatcher with
+     `bank = "{slug}"` and `parsers = _PARSERS`
    - module/package-level
      `parse(body, *, sender=None, received_at=None)` that forwards
      both keyword args to the dispatcher
-4. For banks with multiple distinct SMS shapes, prefer
-   `bank_sms_parser/parsers/{bank}/`; for single-shape banks,
-   `parsers/{bank}.py` is fine but must still contain `_PARSERS` and
-   the dispatcher class.
-5. Keep `email_type` stable and bank-prefixed (e.g.
+5. Single file (`parsers/{bank}.py`) and subpackage
+   (`parsers/{bank}/`) layouts are both valid: `slice.py` and
+   `hdfc.py` are multi-shape single files; `icici/` and `onecard/`
+   are subpackages. Reach for a subpackage when the bank is large or
+   splits naturally by shape; otherwise a single file is fine.
+6. Keep `email_type` stable and bank-prefixed (e.g.
    `hdfc_dc_transaction_alert`). `bank-email-fetcher` stores these
    values verbatim — never rename.
-6. Register the dispatcher in `bank_sms_parser/parsers/__init__.py`.
-   The CLI reads `SUPPORTED_BANKS` automatically.
-7. Add fixture-based pytest coverage with the new SMS body anonymized
-   in `tests/fixtures/sms/{bank}/{slug}.txt` and a parametrized case
-   in `tests/test_new_parsers.py`.
+7. Register the dispatcher by adding `"{slug}": {Bank}Parser` to the
+   `PARSERS` dict in `bank_sms_parser/parsers/__init__.py`.
+   `api.SUPPORTED_BANKS = tuple(PARSERS)` and the CLI bank list
+   follow automatically.
+8. Add fixture-based pytest coverage:
+   - positive fixtures at `tests/fixtures/sms/{bank}/{slug}.txt`
+     plus a parametrized case in `tests/test_new_parsers.py`
+   - for known non-transaction or intentionally stubbed shapes,
+     drop the body at `tests/fixtures/sms/{bank}/negative/{slug}.txt`
+     and add it to `test_real_negative_fixtures_raise_parse_error`
 
 ## `_PARSERS` ordering
 
@@ -106,7 +126,7 @@ If the SMS body has no usable date, parsers must accept the optional
 `received_at` argument and use it as the fallback for
 `transaction_date` / `transaction_time`. `received_at` is a UTC
 datetime per Part 1's contract; convert to `Asia/Kolkata` via
-`received_at_to_ist` (in `bank_sms_parser.parsing.dates`) **before**
+`received_at_to_ist` (from `bank_sms_parser.parsing`) **before**
 extracting `.date()` / `.time()`. An SMS that arrived at 02:30 IST
 will otherwise land on the previous UTC day. Do not invent a date
 from `today()`; either use what the body says, what the forwarder
@@ -120,14 +140,20 @@ gave us (IST-converted), or leave the field `None`.
 - Keep public compatibility: `parse_sms`, `SUPPORTED_BANKS`,
   exceptions, and bank-level imports
   (`from bank_sms_parser.parsers.{bank} import {Bank}Parser`).
-- Never commit real personal or financial data — anonymize masks,
-  amounts, VPAs, reference numbers, merchant identifiers, AND personal
-  names (`Hi Akhil` → `Hi Customer`) in fixtures.
+- Never commit real personal or financial data. Use the stable fake
+  conventions already in fixtures: card/account masks `XX0000` /
+  `x0000` / `xx0000` / `0000`; reference numbers `000000000000`;
+  customer names `Customer` (`Hi Akhil` → `Hi Customer`); fake
+  merchants like `SampleSubs Monthly`. Anonymize VPAs, phone
+  numbers, and bank short-links the same way.
+- Python is 3.14+. Do **not** "fix" parenthesis-free multi-except
+  syntax (PEP 758) — see `AGENTS.md`.
 
 ## Final check
 
 After implementation, from the package root, run:
 
+    uv sync               # only if deps are not yet installed
     uv run pytest -q
     uv run ruff check
     uv run ty check
