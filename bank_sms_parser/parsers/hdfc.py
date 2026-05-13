@@ -54,8 +54,7 @@ class HdfcDcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("HDFC DC transaction alert pattern did not match")
         dt = parse_datetime(match.group("datetime"))
         return ParsedSms(
@@ -107,8 +106,7 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("HDFC CC transaction alert pattern did not match")
         dt = parse_datetime(match.group("datetime"))
         return ParsedSms(
@@ -316,8 +314,7 @@ class HdfcAccountTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("HDFC account IMPS credit pattern did not match")
         return ParsedSms(
             email_type=self.email_type,

@@ -60,8 +60,7 @@ class SliceCcBillPaidAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("slice CC bill-paid pattern did not match")
         txn_date: datetime.date | None = None
         if received_at is not None:
@@ -110,8 +109,7 @@ class SliceAccountUpiCreditAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("slice account UPI credit pattern did not match")
         return ParsedSms(
             email_type=self.email_type,
@@ -159,8 +157,7 @@ class SliceAccountUpiDebitAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("slice account UPI debit pattern did not match")
         return ParsedSms(
             email_type=self.email_type,

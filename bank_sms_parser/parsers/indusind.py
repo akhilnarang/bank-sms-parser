@@ -58,12 +58,10 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
 
-        match = self._UPI_PATTERN.search(text)
-        if match:
+        if match := self._UPI_PATTERN.search(text):
             return self._build_upi(match, received_at)
 
-        match = self._IMPS_PATTERN.search(text)
-        if match:
+        if match := self._IMPS_PATTERN.search(text):
             return self._build_imps(match)
 
         raise ParseError(
@@ -148,8 +146,7 @@ class IndusindAccountUpiCreditAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError(
                 "IndusInd account UPI credit alert: pattern did not match"
             )

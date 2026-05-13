@@ -35,8 +35,7 @@ class AxisCcPaymentReceivedParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
+        if not (match := self._PATTERN.search(text)):
             raise ParseError("Axis CC payment-received pattern did not match")
         return ParsedSms(
             email_type=self.email_type,

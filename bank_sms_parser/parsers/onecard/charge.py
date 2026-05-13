@@ -60,11 +60,9 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         for pattern in self._PATTERNS_INR:
-            match = pattern.search(text)
-            if match:
+            if match := pattern.search(text):
                 return self._build(match, currency="INR", received_at=received_at)
-        match = self._PATTERN_FOREIGN.search(text)
-        if match:
+        if match := self._PATTERN_FOREIGN.search(text):
             return self._build(
                 match, currency=match.group("currency"), received_at=received_at
             )
