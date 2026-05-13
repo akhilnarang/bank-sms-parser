@@ -4,6 +4,7 @@ Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
 - hdfc_cc_refund_alert: Credit-card UPI refund credit
+- hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
 """
 
@@ -168,6 +169,57 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
         )
 
 
+class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
+    """HDFC credit-card bill-payment-received credit alert.
+
+    Sample:
+        "HDFC Bank Cardmember, Online Payment of Rs.1000 vide
+         Ref# 000XXXXXXXXXXXX was credited to your card ending 0000
+         On 08/MAY/2026_value Date 08/MAY/2026"
+
+    Semantic peer of ``axis_cc_payment_received_alert`` and
+    ``idfc_cc_payment_received_alert`` — the user's bill payment was
+    credited to the credit card (reduces CC outstanding). Direction is
+    ``credit``. The trailing ``_value Date`` repeats the same date and is
+    intentionally ignored. ``channel`` and ``counterparty`` are left
+    ``None`` because the body has no explicit channel marker (unlike the
+    UPI-refund shape).
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_cc_payment_received_alert"
+
+    _PATTERN = re.compile(
+        r"HDFC\s+Bank\s+Cardmember,\s+"
+        r"Online\s+Payment\s+of\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"vide\s+Ref#\s+(?P<ref>[A-Za-z0-9]+)\s+"
+        r"was\s+credited\s+to\s+your\s+card\s+ending\s+(?P<card>\d+)\s+"
+        r"On\s+(?P<date>\d{1,2}/[A-Za-z]+/\d{4})"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC CC payment-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                reference_number=match.group("ref"),
+                card_mask=match.group("card"),
+            ),
+        )
+
+
 class HdfcAccountTransactionAlertParser(BaseSmsParser):
     """HDFC savings/current-account IMPS credit alert.
 
@@ -228,6 +280,10 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     HdfcCcTransactionAlertParser(),
     HdfcCcRefundAlertParser(),
+    # Payment-received sits after the refund (both are CC credits) and
+    # before the account parser; each has a unique anchor so order is not
+    # load-bearing, but grouping the CC shapes keeps the file readable.
+    HdfcCcPaymentReceivedAlertParser(),
     HdfcAccountTransactionAlertParser(),
 )
 

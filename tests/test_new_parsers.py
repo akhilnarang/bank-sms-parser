@@ -84,6 +84,26 @@ def _assert_matches(parsed, expected: dict) -> None:
         "reference_number": "000000000000",
         "transaction_date": datetime.date(2026, 5, 1),
     }),
+    ("hdfc", "hdfc/cc_payment_received.txt", {
+        "email_type": "hdfc_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("1000"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "reference_number": "000XXXXXXXXXXXX",
+        "transaction_date": datetime.date(2026, 5, 8),
+    }),
+    # Spaced "Rs. 1,000" variant — guards the optional `\s*` after `Rs.`
+    # and the grouped-digit amount.
+    ("hdfc", "hdfc/cc_payment_received_spaced.txt", {
+        "email_type": "hdfc_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("1000"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "reference_number": "000XXXXXXXXXXXX",
+        "transaction_date": datetime.date(2026, 5, 8),
+    }),
     ("hdfc", "hdfc/account_imps_credit.txt", {
         "email_type": "hdfc_account_transaction_alert",
         "direction": "credit",
