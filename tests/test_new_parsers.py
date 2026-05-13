@@ -164,6 +164,32 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 5, 4),
     }),
+    ("idfc", "idfc/account_upi_debit.txt", {
+        "email_type": "idfc_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("20000.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "CUSTOMER NAME",
+        "reference_number": "000000000000",
+        "channel": "upi",
+        "balance": Decimal("16442.65"),
+        "transaction_date": datetime.date(2026, 5, 9),
+    }),
+    # Dotted-payee variant — guards against a `[^.]+?` payee class that
+    # would silently reject merchants like "M/S A.B. MART".
+    ("idfc", "idfc/account_upi_debit_dotted_payee.txt", {
+        "email_type": "idfc_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("750.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "M/S A.B. MART",
+        "reference_number": "000000000001",
+        "channel": "upi",
+        "balance": Decimal("10000.00"),
+        "transaction_date": datetime.date(2026, 5, 9),
+    }),
     ("indusind", "indusind/account_upi_credit.txt", {
         "email_type": "indusind_account_upi_credit_alert",
         "direction": "credit",
