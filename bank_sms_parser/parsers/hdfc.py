@@ -6,6 +6,7 @@ Supported SMS types:
 - hdfc_cc_refund_alert: Credit-card UPI refund credit
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
+- hdfc_account_upi_credit_alert: Savings account UPI credit
 """
 
 import datetime
@@ -276,15 +277,76 @@ class HdfcAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
+class HdfcAccountUpiCreditAlertParser(BaseSmsParser):
+    """HDFC savings/current-account UPI credit alert.
+
+    Sample (multi-line in the wire body; whitespace is normalized first):
+        "Credit Alert!
+         Rs.1.00 credited to HDFC Bank A/c XX0000 on 09-05-26
+         from VPA customer@bank (UPI 000000000000)"
+
+    Discriminators vs the IMPS credit shape:
+    - Leading "Credit Alert!" banner (IMPS uses "Received!").
+    - Amount prefixed with ``Rs.`` rather than ``INR``.
+    - Account mask is uppercase ``XX####`` (IMPS body uses lowercase
+      ``xx####``); kept verbatim from the body.
+    - "from VPA <handle>" + "(UPI <ref>)" trailer; no in-body balance.
+
+    Counterparty stores the bare VPA handle (``customer@bank``) — the
+    ``VPA`` literal is a template marker, not part of the identifier.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_upi_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Credit\s+Alert!\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"credited\s+to\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
+        r"from\s+VPA\s+(?P<vpa>\S+)\s+"
+        r"\(UPI\s+(?P<ref>\d+)\)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC account UPI credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("vpa"),
+                reference_number=match.group("ref"),
+                channel="upi",
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     HdfcCcTransactionAlertParser(),
     HdfcCcRefundAlertParser(),
     # Payment-received sits after the refund (both are CC credits) and
-    # before the account parser; each has a unique anchor so order is not
-    # load-bearing, but grouping the CC shapes keeps the file readable.
+    # before the account parsers; each has a unique anchor so order is
+    # not load-bearing, but grouping the CC shapes keeps the file
+    # readable.
     HdfcCcPaymentReceivedAlertParser(),
+    # Both account parsers have unique leading banners ("Received!" vs
+    # "Credit Alert!") so they are mutually exclusive; ordering between
+    # them is not load-bearing.
     HdfcAccountTransactionAlertParser(),
+    HdfcAccountUpiCreditAlertParser(),
 )
 
 

@@ -116,6 +116,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "balance": Decimal("99999.99"),
         "transaction_date": datetime.date(2026, 5, 3),
     }),
+    ("hdfc", "hdfc/account_upi_credit.txt", {
+        "email_type": "hdfc_account_upi_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("1.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "customer@bank",
+        "reference_number": "000000000000",
+        "channel": "upi",
+        "transaction_date": datetime.date(2026, 5, 9),
+    }),
     ("equitas", "equitas/cc_spend.txt", {
         "email_type": "equitas_cc_transaction_alert",
         "direction": "debit",
