@@ -201,6 +201,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "upi",
         "balance": Decimal("12345.00"),
     }),
+    ("indusind", "indusind/account_upi_debit.txt", {
+        "email_type": "indusind_account_upi_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("46500.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "9999999999@bank",
+        "reference_number": "000000000000",
+        "channel": "upi",
+        "balance": Decimal("0.00"),
+    }),
     ("indusind", "indusind/account_imps_debit.txt", {
         "email_type": "indusind_account_transaction_alert",
         "direction": "debit",
