@@ -197,6 +197,30 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "imps",
         "transaction_date": datetime.date(2026, 5, 2),
     }),
+    ("icici", "icici/account_upi_debit.txt", {
+        "email_type": "icici_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("14.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "Pune Metro",
+        "reference_number": "000000000000",
+        "channel": "upi",
+        "transaction_date": datetime.date(2026, 5, 9),
+    }),
+    # Dotted-payee variant — guards against a `[^.]+?` payee class that
+    # would silently reject merchants like "A.B. Traders".
+    ("icici", "icici/account_upi_debit_dotted_payee.txt", {
+        "email_type": "icici_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("250.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "A.B. Traders",
+        "reference_number": "000000000001",
+        "channel": "upi",
+        "transaction_date": datetime.date(2026, 5, 9),
+    }),
     ("icici", "icici/cc_spend.txt", {
         "email_type": "icici_cc_transaction_alert",
         "direction": "debit",
