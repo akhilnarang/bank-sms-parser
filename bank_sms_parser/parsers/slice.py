@@ -179,13 +179,67 @@ class SliceAccountUpiDebitAlertParser(BaseSmsParser):
         )
 
 
+class SliceCcTransactionAlertParser(BaseSmsParser):
+    """slice credit-card spend alert.
+
+    Sample (sanitized):
+        "Rs. 100.00 spent on your credit card xx0000 at MERCHANT on
+         12-May-26 (UPI Ref: 000000000000). Not you? Call 080-0000-0000
+         - slice"
+
+    The body carries amount, card mask, merchant, an in-body date, and a
+    UPI reference number. Direction is ``debit``; channel defaults to
+    ``card`` (the spend is reported as the CC spend, the UPI ref is the
+    payment instrument used at the merchant).
+    """
+
+    bank = "slice"
+    email_type = "slice_cc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+on\s+your\s+"
+        r"credit\s+card\s+(?P<card>xx\d+)\s+at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s*"
+        r"\(UPI\s+Ref:\s*(?P<ref>\w+)\)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice CC transaction alert pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("merchant").strip(),
+                reference_number=match.group("ref"),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 # Order: most-specific first. The CC bill-paid alert has a unique
 # template ("slice UPI credit card bill ... paid successfully via
 # autopay") that no other shape matches; the credit and debit account
 # alerts are distinguished by their leading verbs ("received in" vs
-# "sent from") so their relative order is not load-bearing.
+# "sent from") so their relative order is not load-bearing. The CC
+# spend alert is anchored on ``spent on your credit card``.
 _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceCcBillPaidAlertParser(),
+    SliceCcTransactionAlertParser(),
     SliceAccountUpiCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),
 )
