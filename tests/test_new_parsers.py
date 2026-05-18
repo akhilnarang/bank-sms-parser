@@ -84,6 +84,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "reference_number": "000000000000",
         "transaction_date": datetime.date(2026, 5, 1),
     }),
+    ("hdfc", "hdfc/cc_merchant_refund.txt", {
+        "email_type": "hdfc_cc_refund_alert",
+        "direction": "credit",
+        "amount": Decimal("262.56"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "counterparty": "SampleMerchant Payments BANGALORE IND",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 5, 17),
+    }),
     ("hdfc", "hdfc/cc_payment_received.txt", {
         "email_type": "hdfc_cc_payment_received_alert",
         "direction": "credit",

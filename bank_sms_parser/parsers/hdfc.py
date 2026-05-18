@@ -3,7 +3,7 @@
 Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
-- hdfc_cc_refund_alert: Credit-card UPI refund credit
+- hdfc_cc_refund_alert: Credit-card refund credit
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
 - hdfc_account_credit_alert: Savings account inbound credit ("Update! INR ... deposited ...")
@@ -127,24 +127,36 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
 
 
 class HdfcCcRefundAlertParser(BaseSmsParser):
-    """HDFC credit-card UPI refund credit.
+    """HDFC credit-card refund credit.
 
-    Sample:
+    variant 1 — UPI CC reference:
         "Alert! Rs. 254 refunded by UPI CC-27-04-2026-000000000000 on
          01/MAY/2026 & adjusted against HDFC Bank Credit Card 0000
          View updated balance here: https://..."
 
-    The CC reference embeds the original spend's date and UTR; the
-    parser captures the trailing UTR digits as ``reference_number``.
-    ``transaction_date`` is the refund date, not the original spend date.
+    variant 2 — merchant/acquirer name, no reference:
+        "Alert! Rs. 262.56 refunded by SampleMerchant BANGALORE IND on
+         17/MAY/2026 & adjusted against HDFC Bank Credit Card 0000
+         View updated balance here: https://..."
+
+    In variant 1 the CC reference embeds the original spend's date and
+    UTR; the parser captures the trailing UTR digits as
+    ``reference_number``. ``transaction_date`` is the refund date, not
+    the original spend date.
     """
 
     bank = "hdfc"
     email_type = "hdfc_cc_refund_alert"
 
-    _PATTERN = re.compile(
+    _UPI_REFUND = re.compile(
         r"Alert!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"refunded\s+by\s+UPI\s+CC-\d{2}-\d{2}-\d{4}-(?P<ref>\d+)\s+"
+        r"on\s+(?P<date>\d{1,2}/[A-Za-z]+/\d{4})\s+"
+        r"&\s+adjusted\s+against\s+HDFC\s+Bank\s+Credit\s+Card\s+(?P<card>\d+)"
+    )
+    _MERCHANT_REFUND = re.compile(
+        r"Alert!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"refunded\s+by\s+(?P<merchant>.+?)\s+"
         r"on\s+(?P<date>\d{1,2}/[A-Za-z]+/\d{4})\s+"
         r"&\s+adjusted\s+against\s+HDFC\s+Bank\s+Credit\s+Card\s+(?P<card>\d+)"
     )
@@ -157,9 +169,30 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        match = self._PATTERN.search(text)
-        if not match:
-            raise ParseError("HDFC CC refund alert pattern did not match")
+        if match := self._UPI_REFUND.search(text):
+            return self._build(
+                match,
+                counterparty=None,
+                reference_number=match.group("ref"),
+                channel="upi",
+            )
+        if match := self._MERCHANT_REFUND.search(text):
+            return self._build(
+                match,
+                counterparty=match.group("merchant").strip(),
+                reference_number=None,
+                channel="card",
+            )
+        raise ParseError("HDFC CC refund alert pattern did not match")
+
+    def _build(
+        self,
+        match: re.Match[str],
+        *,
+        counterparty: str | None,
+        reference_number: str | None,
+        channel: str,
+    ) -> ParsedSms:
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
@@ -167,9 +200,10 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
                 direction="credit",
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
                 transaction_date=parse_date(match.group("date")),
-                reference_number=match.group("ref"),
+                counterparty=counterparty,
+                reference_number=reference_number,
                 card_mask=match.group("card"),
-                channel="upi",
+                channel=channel,
             ),
         )
 
