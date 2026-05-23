@@ -73,3 +73,51 @@ class IciciCcTransactionAlertParser(BaseSmsParser):
                     ),
                 )
         raise ParseError("ICICI CC transaction alert pattern did not match")
+
+
+class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
+    """ICICI credit-card bill-payment-received notification.
+
+    Sample:
+        "Payment of Rs 50,000.00 has been received on your ICICI Bank
+         Credit Card XX0000 through Bharat Bill Payment System on 21-MAY-26."
+
+    Money is credited to the card (it reduces the outstanding balance), so
+    this is emitted as a ``credit``. Mirrors the axis/idfc
+    ``cc_payment_received`` convention: card_mask + date only, no
+    counterparty/balance. The payment rail ("through ...") is optional so a
+    rail-less variant still matches.
+    """
+
+    bank = "icici"
+    email_type = "icici_cc_payment_received_alert"
+
+    _PATTERN = re.compile(
+        r"Payment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"has\s+been\s+received\s+on\s+your\s+"
+        r"ICICI\s+Bank\s+Credit\s+Card\s+(?P<card>XX\d+)\s+"
+        r"(?:through\s+.+?\s+)?on\s+(?P<date>\d{1,2}-\w+-\d{2})"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI CC payment-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                card_mask=match.group("card"),
+            ),
+        )

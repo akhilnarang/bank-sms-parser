@@ -233,6 +233,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "imps",
         "transaction_date": datetime.date(2026, 5, 3),
     }),
+    # IndusInd credit-card spend (distinct from the account UPI/IMPS shapes):
+    # carries an in-body date + 12-hour time and an "Avl Lmt" credit limit.
+    ("indusind", "indusind/cc_spend.txt", {
+        "email_type": "indusind_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("1234.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "PYU*SWIGGY FOOD",
+        "balance": Decimal("99999.99"),
+        "transaction_date": datetime.date(2026, 5, 22),
+        "transaction_time": datetime.time(19, 58, 13),
+        "channel": "card",
+    }),
     ("icici", "icici/account_imps_debit.txt", {
         "email_type": "icici_account_transaction_alert",
         "direction": "debit",
@@ -386,6 +400,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "counterparty": "SAMPLE MERCHANT",
         "balance": Decimal("200.00"),
         "transaction_date": datetime.date(2026, 5, 16),
+    }),
+    # ICICI CC bill-payment received (money credited to the card via BBPS).
+    # Mirrors the axis/idfc cc_payment_received convention: direction=credit,
+    # card_mask + date, no counterparty/balance.
+    ("icici", "icici/cc_payment_received.txt", {
+        "email_type": "icici_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "transaction_date": datetime.date(2026, 5, 21),
     }),
     ("slice", "slice/cc_spend.txt", {
         "email_type": "slice_cc_transaction_alert",

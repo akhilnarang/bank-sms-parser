@@ -10,6 +10,7 @@ from bank_sms_parser.parsing import (
     normalize_whitespace,
     parse_amount,
     parse_date,
+    parse_datetime,
     received_at_to_ist,
 )
 
@@ -245,6 +246,63 @@ class IndusindAccountUpiDebitAlertParser(BaseSmsParser):
         )
 
 
+class IndusindCcSpendAlertParser(BaseSmsParser):
+    """IndusInd credit-card spend alert.
+
+    Distinct from the savings/current-account UPI/IMPS shapes: this is a
+    card POS/online spend that carries an in-body date + 12-hour clock time
+    and an ``Avl Lmt`` (available credit limit) rather than ``Avl Bal``.
+
+    Sample:
+        "INR 1,234.00 spent on IndusInd Card XX0000 on 22-05-2026
+         07:58:13 pm at PYU*SWIGGY FOOD. Avl Lmt: INR 99,999.99.
+         To dispute, call 18602677777/SMS BLOCK 0000 to 5676757"
+    """
+
+    bank = "indusind"
+    email_type = "indusind_cc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+on\s+"
+        r"IndusInd\s+Card\s+(?P<card>XX\d+)\s+on\s+"
+        r"(?P<date>\d{2}-\d{2}-\d{4})\s+"
+        r"(?P<time>\d{1,2}:\d{2}:\d{2}\s*(?i:[ap]m))\s+"
+        r"at\s+(?P<merchant>.+?)\.\s+Avl\s+Lmt:\s+INR\s+"
+        r"(?P<limit>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IndusInd CC spend pattern did not match")
+
+        txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                counterparty=match.group("merchant").strip(),
+                balance=Money(
+                    amount=parse_amount(match.group("limit")), currency="INR"
+                ),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 # Order: the shape-specific UPI parsers run first. The UPI-credit parser
 # is verb-restricted to ``credited`` + ``from``; the UPI-debit parser is
 # verb-restricted to ``debited`` + ``towards``. Both claim their UPI
@@ -252,6 +310,7 @@ class IndusindAccountUpiDebitAlertParser(BaseSmsParser):
 # handles the IMPS debit shape (and remains a safety net for the historic
 # UPI ``from``-only regex).
 _PARSERS: tuple[BaseSmsParser, ...] = (
+    IndusindCcSpendAlertParser(),
     IndusindAccountUpiCreditAlertParser(),
     IndusindAccountUpiDebitAlertParser(),
     IndusindAccountTransactionAlertParser(),

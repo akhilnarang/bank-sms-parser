@@ -5,14 +5,19 @@ import datetime
 from bank_sms_parser.models import ParsedSms
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsers.icici.account import IciciAccountTransactionAlertParser
-from bank_sms_parser.parsers.icici.cc import IciciCcTransactionAlertParser
+from bank_sms_parser.parsers.icici.cc import (
+    IciciCcPaymentReceivedAlertParser,
+    IciciCcTransactionAlertParser,
+)
 
-# Order: more specific first. Both regexes are anchored on distinct
-# substrings ("ICICI Bank Acct ... debited with" vs "INR ... spent using
-# ICICI Bank Card"), so order is mostly insurance.
+# Order: more specific first. Each regex is anchored on a distinct substring
+# ("ICICI Bank Acct ... debited with", "INR/Rs ... spent ... ICICI Bank Card",
+# "Payment of Rs ... received on your ICICI Bank Credit Card"), so order is
+# mostly insurance.
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IciciAccountTransactionAlertParser(),
     IciciCcTransactionAlertParser(),
+    IciciCcPaymentReceivedAlertParser(),
 )
 
 
@@ -32,6 +37,7 @@ def parse(
 
 __all__ = [
     "IciciAccountTransactionAlertParser",
+    "IciciCcPaymentReceivedAlertParser",
     "IciciCcTransactionAlertParser",
     "IciciParser",
     "parse",
