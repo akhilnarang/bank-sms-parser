@@ -78,14 +78,33 @@ class HdfcDcTransactionAlertParser(BaseSmsParser):
 class HdfcCcTransactionAlertParser(BaseSmsParser):
     """HDFC credit-card spend alert.
 
-    Sample:
+    Two body shapes share this event type (same CC debit, different rail);
+    both emit ``hdfc_cc_transaction_alert`` and are distinguished by
+    ``channel``.
+
+    1) POS / online spend (``channel="card"``):
         "Spent Rs.10290 On HDFC Bank Card 0000 At MERCHANT On
          2026-05-02:22:26:01.Not You? To Block+Reissue Call ..."
+
+    2) Credit-card-on-UPI spend (``channel="upi"``):
+        "Txn Rs.100.00
+         On HDFC Bank Card 0000
+         At sample.vpa@hdfcbank
+         by UPI 000000000000
+         On 02-05
+         Not You?
+         Call .../SMS BLOCK CC 0000 to ..."
 
     Discriminators vs the debit-card shape:
     - "On HDFC Bank Card" (CC) vs "From HDFC Bank Card" (DC).
     - Bare 4-digit card mask, no "x" prefix.
-    - No "Bal Rs." trailer; the datetime is followed by a literal period.
+
+    The POS shape carries a full datetime followed by a literal period and
+    no balance trailer. The UPI shape carries the payee VPA
+    (``counterparty``) and the UPI reference (``reference_number``); its
+    "On DD-MM" date has no year and no time, so — like the bank's other
+    dateless shapes — ``transaction_date``/``transaction_time`` fall back to
+    ``received_at`` (UTC->IST) when supplied, else stay ``None``.
     """
 
     bank = "hdfc"
@@ -98,6 +117,14 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         r"On\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})\."
     )
 
+    _UPI_PATTERN = re.compile(
+        r"Txn\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"On\s+HDFC\s+Bank\s+Card\s+(?P<card>\d+)\s+"
+        r"At\s+(?P<merchant>.+?)\s+"
+        r"by\s+UPI\s+(?P<ref>\d+)\s+"
+        r"On\s+\d{2}-\d{2}\b"
+    )
+
     def parse(
         self,
         body: str,
@@ -106,22 +133,47 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if not (match := self._PATTERN.search(text)):
-            raise ParseError("HDFC CC transaction alert pattern did not match")
-        dt = parse_datetime(match.group("datetime"))
-        return ParsedSms(
-            email_type=self.email_type,
-            bank=self.bank,
-            transaction=SmsTransactionAlert(
-                direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
-                transaction_date=dt.date(),
-                transaction_time=dt.time(),
-                counterparty=match.group("merchant"),
-                card_mask=match.group("card"),
-                channel="card",
-            ),
-        )
+        if match := self._PATTERN.search(text):
+            dt = parse_datetime(match.group("datetime"))
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=dt.date(),
+                    transaction_time=dt.time(),
+                    counterparty=match.group("merchant"),
+                    card_mask=match.group("card"),
+                    channel="card",
+                ),
+            )
+        if match := self._UPI_PATTERN.search(text):
+            txn_date: datetime.date | None = None
+            txn_time: datetime.time | None = None
+            if received_at is not None:
+                ist = received_at_to_ist(received_at)
+                txn_date = ist.date()
+                txn_time = ist.time()
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=txn_date,
+                    transaction_time=txn_time,
+                    counterparty=match.group("merchant"),
+                    reference_number=match.group("ref"),
+                    card_mask=match.group("card"),
+                    channel="upi",
+                ),
+            )
+        raise ParseError("HDFC CC transaction alert pattern did not match")
 
 
 class HdfcCcRefundAlertParser(BaseSmsParser):

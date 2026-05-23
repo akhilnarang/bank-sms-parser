@@ -423,6 +423,35 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 5, 12),
     }),
+    # Axis CC POS/online spend (distinct from the payment-received credit):
+    # in-body "DD-MM-YY HH:MM:SS IST" stamp; the "Avl Limit" credit limit
+    # is stored in `balance`.
+    ("axis", "axis/cc_spend.txt", {
+        "email_type": "axis_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("123.45"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "SampleMerchant Store",
+        "balance": Decimal("99999.99"),
+        "transaction_date": datetime.date(2026, 5, 2),
+        "transaction_time": datetime.time(19, 53, 18),
+        "channel": "card",
+    }),
+    # HDFC credit-card-on-UPI spend — same `hdfc_cc_transaction_alert`
+    # event as the POS spend, distinguished by channel="upi"; carries the
+    # payee VPA + UPI ref. The "On DD-MM" date has no year/time, so date
+    # falls back to received_at (asserted separately; None without it).
+    ("hdfc", "hdfc/cc_upi_spend.txt", {
+        "email_type": "hdfc_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "counterparty": "sample.vpa@hdfcbank",
+        "reference_number": "000000000000",
+        "channel": "upi",
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
@@ -477,6 +506,37 @@ def test_onecard_charge_no_received_at_leaves_date_none() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date is None
     assert result.transaction.transaction_time is None
+
+
+def test_hdfc_cc_upi_uses_received_at_for_date_fallback() -> None:
+    """The CC-on-UPI body's "On DD-MM" has no year/time; received_at
+    (UTC->IST) fills transaction_date/time, like the bank's dateless shapes."""
+    body = _read("hdfc/cc_upi_spend.txt")
+    # 2026-05-23 12:01:32 UTC == 2026-05-23 17:31:32 IST
+    received = datetime.datetime(2026, 5, 23, 12, 1, 32, tzinfo=datetime.UTC)
+    result = parse_sms("hdfc", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 5, 23)
+    assert result.transaction.transaction_time == datetime.time(17, 31, 32)
+
+
+def test_hdfc_cc_upi_no_received_at_leaves_date_none() -> None:
+    """Without received_at there is no date to anchor to; never fabricate."""
+    body = _read("hdfc/cc_upi_spend.txt")
+    result = parse_sms("hdfc", body)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date is None
+    assert result.transaction.transaction_time is None
+
+
+def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
+    """The CC-spend parser (which now also matches a UPI shape) runs before
+    the refund parser; the existing refund fixture must still parse as a
+    credit refund, not get mis-claimed as a UPI debit."""
+    result = parse_sms("hdfc", _read("hdfc/cc_refund.txt"))
+    assert result.email_type == "hdfc_cc_refund_alert"
+    assert result.transaction is not None
+    assert result.transaction.direction == "credit"
 
 
 @pytest.mark.parametrize("bank, body", [

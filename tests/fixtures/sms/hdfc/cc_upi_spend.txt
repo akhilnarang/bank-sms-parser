@@ -1,0 +1,7 @@
+Txn Rs.100.00
+On HDFC Bank Card 0000
+At sample.vpa@hdfcbank
+by UPI 000000000000
+On 23-05
+Not You?
+Call 18002586161/SMS BLOCK CC 0000 to 7308080808
