@@ -452,6 +452,72 @@ def _assert_matches(parsed, expected: dict) -> None:
         "reference_number": "000000000000",
         "channel": "upi",
     }),
+    # HDFC IMPS-to-account outbound debit — same `hdfc_account_upi_debit_alert`
+    # event as the "Sent Rs.X" shape, distinguished by the "IMPS INR ..."
+    # prefix and channel="imps". No payee name in the body; counterparty
+    # surfaces the masked destination account ("Acct xxxx...").
+    ("hdfc", "hdfc/account_imps_sent.txt", {
+        "email_type": "hdfc_account_upi_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("123456.78"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "Acct xxxxxxxxxx0000",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "transaction_date": datetime.date(2026, 5, 12),
+    }),
+    # IDFC IMPS account credit — mobile-linked remitter, IMPS Ref in
+    # the body; new `idfc_account_credit_alert` event type.
+    ("idfc", "idfc/account_imps_credit.txt", {
+        "email_type": "idfc_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("50000.00"),
+        "currency": "INR",
+        "account_mask": "XXXXXXXX000",
+        "counterparty": "Mobile XXXXXXXXX000",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "transaction_date": datetime.date(2026, 5, 2),
+    }),
+    # IDFC generic account debit with balance + in-body date/time;
+    # no merchant, no rail marker. Third shape on
+    # `idfc_account_transaction_alert` (debit-direction counterpart of
+    # the generic credit below).
+    ("idfc", "idfc/account_debit_with_balance.txt", {
+        "email_type": "idfc_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("1234.00"),
+        "currency": "INR",
+        "account_mask": "XXXXX000",
+        "balance": Decimal("0.00"),
+        "transaction_date": datetime.date(2026, 5, 16),
+        "transaction_time": datetime.time(9, 30),
+    }),
+    # IDFC generic account credit with balance + in-body date/time;
+    # no remitter, no rail marker (channel stays None).
+    ("idfc", "idfc/account_credit_with_balance.txt", {
+        "email_type": "idfc_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("1234.00"),
+        "currency": "INR",
+        "account_mask": "XXXXX000",
+        "balance": Decimal("999999.99"),
+        "transaction_date": datetime.date(2026, 5, 16),
+        "transaction_time": datetime.time(9, 30),
+    }),
+    # IndusInd debit-card purchase debited from the account — third
+    # body shape on `indusind_account_transaction_alert`. No merchant
+    # in the body; the 3+***+6 account-mask format is preserved verbatim.
+    ("indusind", "indusind/account_dc_purchase.txt", {
+        "email_type": "indusind_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("2345.00"),
+        "currency": "INR",
+        "account_mask": "000***000000",
+        "balance": Decimal("12345.67"),
+        "channel": "card",
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)

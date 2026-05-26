@@ -6,7 +6,12 @@ import re
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
-from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_date
+from bank_sms_parser.parsing import (
+    normalize_whitespace,
+    parse_amount,
+    parse_date,
+    parse_datetime,
+)
 
 
 class IdfcCcPaymentReceivedParser(BaseSmsParser):
@@ -51,9 +56,7 @@ class IdfcCcPaymentReceivedParser(BaseSmsParser):
 class IdfcAccountTransactionAlertParser(BaseSmsParser):
     """IDFC FIRST savings/current-account debit alert.
 
-    Two cosmetic body shapes share this event type — same downstream
-    meaning, different bank phrasings (mirrors the ICICI account precedent
-    and OneCard charge pattern of multiple compiled regexes in one class):
+    Three cosmetic body shapes share this event type:
 
     1) Debit-card POS/online spend (anchored on ``Spent Rs.X from A/C``):
         "Spent Rs.2,448.00 from A/C XX0000 at INSTAMART on 04/05/26.
@@ -64,12 +67,22 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         "Your A/c XX0000 debited by Rs. 20,000.00 on 09/05/26;
          <Name> credited. RRN 000000000000. Available balance
          Rs. 16,442.65. Team IDFC FIRST Bank"
-        ``channel="upi"`` (RRN sequence is UPI per IDFC convention,
-        same as IndusInd); counterparty=recipient name; reference=RRN;
+        ``channel="upi"`` (RRN sequence is UPI per IDFC convention);
+        counterparty=recipient name; reference=RRN;
         balance=Available balance.
 
-    Each regex is anchored on its discriminating clause so neither shape
-    can accidentally match the other.
+    3) Generic debit anchored on ``Your A/C ... is debited by INR``
+       carrying an in-body DD/MM/YY date + 24-hour time and a
+       ``New Bal :INR ...`` trailer; no merchant, no reference;
+       ``channel`` stays ``None`` because the body carries no rail
+       marker. The debit-direction counterpart of
+       ``IdfcAccountCreditAlertParser._GENERIC_CREDIT_PATTERN``:
+        "Your A/C XXXXX000 is debited by INR 1,234.00 on 16/05/26
+         09:30. New Bal :INR 0.00. Call us on 180010888 for dispute.
+         Team IDFC FIRST Bank"
+
+    Each regex is anchored on its discriminating clause so the shapes
+    cannot accidentally match each other.
     """
 
     bank = "idfc"
@@ -89,6 +102,13 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         r"(?P<payee>.+?)\s+credited\.\s*"
         r"RRN\s+(?P<ref>\d+)\.\s*"
         r"Available\s+balance\s+Rs\.\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    _GENERIC_DEBIT_PATTERN = re.compile(
+        r"Your\s+A/C\s+(?P<account>X+\d+)\s+is\s+debited\s+by\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\s+(?P<time>\d{1,2}:\d{2})\.\s*"
+        r"New\s+Bal\s*:\s*INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
     )
 
     def parse(
@@ -118,9 +138,28 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
                 ),
             )
 
+        if match := self._GENERIC_DEBIT_PATTERN.search(text):
+            txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=txn_dt.date(),
+                    transaction_time=txn_dt.time(),
+                    balance=Money(
+                        amount=parse_amount(match.group("balance")), currency="INR"
+                    ),
+                    account_mask=match.group("account"),
+                ),
+            )
+
         raise ParseError(
             "IDFC account transaction alert: no known pattern matched "
-            "(tried card spend, UPI debit)"
+            "(tried card spend, UPI debit, generic debit)"
         )
 
     def _build(
@@ -148,9 +187,100 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountCreditAlertParser(BaseSmsParser):
+    """IDFC FIRST savings/current-account inbound credit alert.
+
+    Two cosmetic body shapes share this event type:
+
+    1) IMPS credit anchored on ``credited by Rs.`` with a mobile-linked
+       remitter and an ``(IMPS Ref no ...)`` trailer; ``channel="imps"``,
+       counterparty=originator's masked mobile, reference=IMPS ref:
+        "Your a/c no. XXXXXXXX669 is credited by Rs. 50000.00 on
+         02-May-26 by a/c linked to mobile XXXXXXXXX000
+         (IMPS Ref no 000000000000 ). Team IDFC FIRST Bank"
+
+    2) Generic credit anchored on ``credited with INR`` carrying an
+       in-body DD/MM/YY date + 24-hour time and a ``Your new balance is
+       INR ...`` trailer; no remitter or reference; ``channel`` stays
+       ``None`` because the body carries no rail marker:
+        "Your A/C XXXXX000 is credited with INR 1,234.00 on
+         16/05/26 09:30. Your new balance is INR 9,99,999.99.
+         Team IDFC FIRST Bank"
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_credit_alert"
+
+    _IMPS_CREDIT_PATTERN = re.compile(
+        r"Your\s+a/c\s+no\.\s+(?P<account>X+\d+)\s+is\s+credited\s+by\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-[A-Za-z]+-\d{2,4})\s+"
+        r"by\s+a/c\s+linked\s+to\s+mobile\s+(?P<mobile>X+\d+)\s*"
+        r"\(IMPS\s+Ref\s+no\.?\s+(?P<ref>\d+)\s*\)"
+    )
+
+    _GENERIC_CREDIT_PATTERN = re.compile(
+        r"Your\s+A/C\s+(?P<account>X+\d+)\s+is\s+credited\s+with\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\s+(?P<time>\d{1,2}:\d{2})\.\s*"
+        r"Your\s+new\s+balance\s+is\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+
+        if match := self._IMPS_CREDIT_PATTERN.search(text):
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="credit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=f"Mobile {match.group('mobile')}",
+                    reference_number=match.group("ref"),
+                    channel="imps",
+                    account_mask=match.group("account"),
+                ),
+            )
+
+        if match := self._GENERIC_CREDIT_PATTERN.search(text):
+            txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="credit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=txn_dt.date(),
+                    transaction_time=txn_dt.time(),
+                    balance=Money(
+                        amount=parse_amount(match.group("balance")), currency="INR"
+                    ),
+                    account_mask=match.group("account"),
+                ),
+            )
+
+        raise ParseError(
+            "IDFC account credit alert: no known pattern matched "
+            "(tried IMPS credit, generic credit)"
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
     IdfcAccountTransactionAlertParser(),
+    IdfcAccountCreditAlertParser(),
 )
 
 

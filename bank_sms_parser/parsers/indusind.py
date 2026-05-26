@@ -18,9 +18,7 @@ from bank_sms_parser.parsing import (
 class IndusindAccountTransactionAlertParser(BaseSmsParser):
     """IndusInd savings/current-account transaction alert.
 
-    Two body shapes share this event type — same downstream meaning,
-    different bank phrasings (mirrors the OneCard charge precedent of
-    multiple compiled regexes in a single class):
+    Three body shapes share this event type:
 
     1) UPI alert (carries no in-body date — uses ``received_at`` fallback):
         "A/C *XX0000 credited by Rs 12345.00 from VPA@bank.
@@ -31,6 +29,15 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         "Your account XXXXXXX0000 debited with Rs. 12345 on 03-05-26
          and account XXXXXXX0001/Customer will be credited.
          (IMPS Ref no. 000000000000). ..."
+
+    3) Debit-card purchase debit (no in-body date — uses ``received_at``
+       fallback; no merchant in the body, so ``counterparty`` stays
+       ``None``; ``channel="card"``):
+        "INR 1,100.00 debited from your A/C 000***000000 towards
+         Debit Card Purchase. Avl BAL INR 0.00 - Not you? ..."
+       The account-mask format here uses a 3-digit prefix + ``***`` +
+       a 6-digit suffix (distinct from the ``*XX####`` UPI form and the
+       all-X IMPS form), and is preserved verbatim.
     """
 
     bank = "indusind"
@@ -50,6 +57,13 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         r"\(IMPS\s+Ref\s+no\.\s*(?P<ref>\d+)\)"
     )
 
+    _DC_PURCHASE_PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"debited\s+from\s+your\s+A/C\s+(?P<account>\d{3}\*{3}\d{6})\s+"
+        r"towards\s+Debit\s+Card\s+Purchase\.\s+"
+        r"Avl\s+BAL\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
     def parse(
         self,
         body: str,
@@ -64,6 +78,9 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
 
         if match := self._IMPS_PATTERN.search(text):
             return self._build_imps(match)
+
+        if match := self._DC_PURCHASE_PATTERN.search(text):
+            return self._build_dc_purchase(match, received_at)
 
         raise ParseError(
             "IndusInd account transaction alert: no known pattern matched"
@@ -111,6 +128,35 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
                 counterparty=f"Acct {match.group('dest')}/{match.group('dest_name').strip()}",
                 reference_number=match.group("ref"),
                 channel="imps",
+                account_mask=match.group("account"),
+            ),
+        )
+
+    def _build_dc_purchase(
+        self,
+        match: re.Match[str],
+        received_at: datetime.datetime | None,
+    ) -> ParsedSms:
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                channel="card",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )

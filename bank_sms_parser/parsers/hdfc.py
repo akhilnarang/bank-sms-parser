@@ -7,7 +7,7 @@ Supported SMS types:
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
 - hdfc_account_credit_alert: Savings account inbound credit ("Update! INR ... deposited ...")
-- hdfc_account_upi_debit_alert: Savings account UPI/IMPS debit ("Sent Rs.X From HDFC Bank A/C *...")
+- hdfc_account_upi_debit_alert: Savings account UPI/IMPS debit ("Sent Rs.X From HDFC Bank A/C *..." and "IMPS INR X sent from HDFC Bank A/c XX...")
 - hdfc_account_upi_credit_alert: Savings account UPI credit
 - hdfc_cc_smartpay_bbps_alert: SmartPay BBPS bill auto-debit on CC
 """
@@ -445,7 +445,11 @@ class HdfcAccountUpiCreditAlertParser(BaseSmsParser):
 class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
     """HDFC savings/current-account outbound transfer alert.
 
-    Sample (multi-line in the wire body; whitespace is normalized first):
+    Two cosmetic body shapes share this event type:
+
+    1) ``Sent Rs.<amount>`` template — UPI/IMPS to a person/VPA payee
+       (channel inferred from the trailing ``BLOCK UPI``/``BLOCK IMPS``
+       hint; defaults to ``upi``):
         "Sent Rs.100.00
          From HDFC Bank A/C *0000
          To CUSTOMER NAME
@@ -454,11 +458,23 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
          Not You?
          Call 18002586161/SMS BLOCK UPI to 7308080808"
 
-    HDFC routes both UPI and IMPS outbound transfers through this template.
-    The trailing block-channel hint says ``BLOCK UPI`` for UPI sends and
-    ``BLOCK IMPS`` for IMPS; default to ``channel="upi"`` when neither
-    appears (the dominant case) and switch only when an explicit IMPS
-    block-marker is present.
+    2) ``IMPS INR <amount> sent`` template — IMPS to a masked account
+       (no payee name; explicit IMPS prefix and ``Ref-`` delimiter
+       distinguish this shape; ``channel="imps"`` unconditionally):
+        "IMPS INR 1,23,456.78
+         sent from HDFC Bank A/c XX0000 on 12-05-26
+         To A/c xxxxxxxxxx0000
+         Ref-000000000000
+         Not you?Call 18002586161/SMS BLOCK OB to 7308080808"
+
+    The IMPS-to-account shape carries no payee name, so ``counterparty``
+    surfaces the masked destination account (``Acct xxxxxxxxxx0000``).
+
+    The IMPS regex is intentionally narrow: source mask is ``XX####``
+    (uppercase, per HDFC's IMPS-send convention), destination mask is
+    ``x...####`` (lowercase, the only form seen in real bodies), and the
+    reference delimiter is the exact token ``Ref-`` (no space, no colon).
+    Loosen only when a real SMS in another shape is observed.
     """
 
     bank = "hdfc"
@@ -472,6 +488,14 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
         r"Ref\s+(?P<ref>\d+)"
     )
 
+    _IMPS_SEND_PATTERN = re.compile(
+        r"IMPS\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"sent\s+from\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
+        r"To\s+A/c\s+(?P<dest>x+\d+)\s+"
+        r"Ref-(?P<ref>\d+)"
+    )
+
     _IMPS_HINT = re.compile(r"BLOCK\s+IMPS", re.IGNORECASE)
 
     def parse(
@@ -482,22 +506,38 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if not (match := self._PATTERN.search(text)):
-            raise ParseError("HDFC account UPI debit pattern did not match")
-        channel = "imps" if self._IMPS_HINT.search(text) else "upi"
-        return ParsedSms(
-            email_type=self.email_type,
-            bank=self.bank,
-            transaction=SmsTransactionAlert(
-                direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
-                transaction_date=parse_date(match.group("date")),
-                counterparty=match.group("payee").strip(),
-                reference_number=match.group("ref"),
-                channel=channel,
-                account_mask=match.group("account"),
-            ),
-        )
+        if match := self._IMPS_SEND_PATTERN.search(text):
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=f"Acct {match.group('dest')}",
+                    reference_number=match.group("ref"),
+                    channel="imps",
+                    account_mask=match.group("account"),
+                ),
+            )
+        if match := self._PATTERN.search(text):
+            channel = "imps" if self._IMPS_HINT.search(text) else "upi"
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=match.group("payee").strip(),
+                    reference_number=match.group("ref"),
+                    channel=channel,
+                    account_mask=match.group("account"),
+                ),
+            )
+        raise ParseError("HDFC account UPI debit pattern did not match")
 
 
 class HdfcAccountCreditAlertParser(BaseSmsParser):
