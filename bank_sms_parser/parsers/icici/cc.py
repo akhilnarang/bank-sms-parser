@@ -12,9 +12,7 @@ from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_da
 class IciciCcTransactionAlertParser(BaseSmsParser):
     """ICICI credit-card spend alert.
 
-    Two cosmetic body shapes share this event type — same downstream
-    meaning, different bank phrasings (mirrors the OneCard charge pattern
-    of multiple compiled regexes in a single class):
+    Two cosmetic body shapes share this event type:
 
     variant 1 — ``INR ... spent using ICICI Bank Card`` (uses ``on`` for
     merchant and ``Avl Limit: INR`` for the limit):

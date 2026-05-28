@@ -10,29 +10,7 @@ from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_da
 
 
 class IciciAccountTransactionAlertParser(BaseSmsParser):
-    """ICICI account-level transaction alert (debit via IMPS or UPI).
-
-    Two cosmetic body shapes share this event type — same downstream
-    meaning, different bank phrasings (mirrors the OneCard charge
-    precedent of multiple compiled regexes in a single class):
-
-    1) IMPS debit (uses "debited with" and "& Acct XX### credited.IMPS:"):
-        "ICICI Bank Acct XX000 debited with Rs 10,000.00 on 02-May-26
-         & Acct XX001 credited.IMPS:000000000000. ..."
-
-    2) UPI debit (uses "debited for" and "; <Name> credited. UPI:"):
-        "ICICI Bank Acct XX000 debited for Rs 14.00 on 09-May-26;
-         Pune Metro credited. UPI:000000000000. ..."
-
-    The paired credit mention in the same body refers to the
-    destination account/payee; per spec §6 we emit ONE debit alert (the
-    sending bank's primary event) and store the destination mask or
-    merchant name in ``counterparty``.
-
-    Each regex is anchored on the discriminating clause (``debited
-    with`` + ``&`` for IMPS; ``debited for`` + ``;`` for UPI) so neither
-    shape can accidentally match the other.
-    """
+    """ICICI account-level transaction alert (debit via IMPS or UPI)."""
 
     bank = "icici"
     email_type = "icici_account_transaction_alert"
@@ -94,6 +72,44 @@ class IciciAccountTransactionAlertParser(BaseSmsParser):
                 counterparty=counterparty,
                 reference_number=match.group("ref"),
                 channel=channel,
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+class IciciAccountUpiCreditAlertParser(BaseSmsParser):
+    """ICICI account UPI credit alert without an available-balance field."""
+
+    bank = "icici"
+    email_type = "icici_account_upi_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+Acct\s+(?P<account>XX\d+)\s+"
+        r"is\s+credited\s+with\s+Rs\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2})\s+"
+        r"from\s+(?P<payer>.+?)\.\s+UPI:(?P<ref>\d+)-ICICI\s+Bank\."
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account UPI credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("payer").strip(),
+                reference_number=match.group("ref"),
+                channel="upi",
                 account_mask=match.group("account"),
             ),
         )

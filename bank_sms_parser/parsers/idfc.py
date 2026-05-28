@@ -53,6 +53,44 @@ class IdfcCcPaymentReceivedParser(BaseSmsParser):
         )
 
 
+class IdfcAccountBalanceDebitAlertParser(BaseSmsParser):
+    """IDFC FIRST account debit alert with balance and in-body timestamp."""
+
+    bank = "idfc"
+    email_type = "idfc_account_balance_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+A/C\s+(?P<account>X+\d+)\s+is\s+debited\s+by\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\s+(?P<time>\d{1,2}:\d{2})\.\s*"
+        r"New\s+Bal\s*:\s*INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account balance debit pattern did not match")
+        txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IdfcAccountTransactionAlertParser(BaseSmsParser):
     """IDFC FIRST savings/current-account debit alert.
 
@@ -187,6 +225,83 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountImpsCreditAlertParser(BaseSmsParser):
+    """IDFC FIRST account IMPS credit from a mobile-linked account."""
+
+    bank = "idfc"
+    email_type = "idfc_account_imps_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+a/c\s+no\.\s+(?P<account>X+\d+)\s+is\s+credited\s+by\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-[A-Za-z]+-\d{2,4})\s+"
+        r"by\s+a/c\s+linked\s+to\s+mobile\s+(?P<mobile>X+\d+)\s*"
+        r"\(IMPS\s+Ref\s+no\.?\s+(?P<ref>\d+)\s*\)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Mobile {match.group('mobile')}",
+                reference_number=match.group("ref"),
+                channel="imps",
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+class IdfcAccountBalanceCreditAlertParser(BaseSmsParser):
+    """IDFC FIRST account credit alert with balance and in-body timestamp."""
+
+    bank = "idfc"
+    email_type = "idfc_account_balance_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+A/C\s+(?P<account>X+\d+)\s+is\s+credited\s+with\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\s+(?P<time>\d{1,2}:\d{2})\.\s*"
+        r"Your\s+new\s+balance\s+is\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account balance credit pattern did not match")
+        txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IdfcAccountCreditAlertParser(BaseSmsParser):
     """IDFC FIRST savings/current-account inbound credit alert.
 
@@ -279,7 +394,10 @@ class IdfcAccountCreditAlertParser(BaseSmsParser):
 
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
+    IdfcAccountBalanceDebitAlertParser(),
     IdfcAccountTransactionAlertParser(),
+    IdfcAccountImpsCreditAlertParser(),
+    IdfcAccountBalanceCreditAlertParser(),
     IdfcAccountCreditAlertParser(),
 )
 

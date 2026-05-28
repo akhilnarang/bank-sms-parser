@@ -292,6 +292,50 @@ class IndusindAccountUpiDebitAlertParser(BaseSmsParser):
         )
 
 
+class IndusindAccountDcPurchaseAlertParser(BaseSmsParser):
+    """IndusInd account debit from debit-card purchase."""
+
+    bank = "indusind"
+    email_type = "indusind_account_dc_purchase_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"debited\s+from\s+your\s+A/C\s+(?P<account>\d{3}\*{3}\d{6})\s+"
+        r"towards\s+Debit\s+Card\s+Purchase\.\s+"
+        r"Avl\s+BAL\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IndusInd account debit-card purchase pattern did not match")
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                channel="card",
+                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IndusindCcSpendAlertParser(BaseSmsParser):
     """IndusInd credit-card spend alert.
 
@@ -359,6 +403,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IndusindCcSpendAlertParser(),
     IndusindAccountUpiCreditAlertParser(),
     IndusindAccountUpiDebitAlertParser(),
+    IndusindAccountDcPurchaseAlertParser(),
     IndusindAccountTransactionAlertParser(),
 )
 

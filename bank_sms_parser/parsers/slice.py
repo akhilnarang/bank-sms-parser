@@ -36,10 +36,8 @@ class SliceCcBillPaidAlertParser(BaseSmsParser):
          successfully via autopay. Thanks for paying on time! - slice"
 
     Treated as a ``credit`` event because a payment toward the CC reduces
-    outstanding CC debt (mirrors the IDFC / Axis / OneCard
-    "payment received" parsers). The body carries no card mask — slice's
-    template omits it for this shape — so ``card_mask`` stays ``None``,
-    which the skill explicitly allows for payment-received alerts.
+    outstanding CC debt. The body carries no card mask — slice's template
+    omits it for this shape — so ``card_mask`` stays ``None``.
     """
 
     bank = "slice"

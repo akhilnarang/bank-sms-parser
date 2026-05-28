@@ -4,7 +4,10 @@ import datetime
 
 from bank_sms_parser.models import ParsedSms
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
-from bank_sms_parser.parsers.icici.account import IciciAccountTransactionAlertParser
+from bank_sms_parser.parsers.icici.account import (
+    IciciAccountTransactionAlertParser,
+    IciciAccountUpiCreditAlertParser,
+)
 from bank_sms_parser.parsers.icici.cc import (
     IciciCcPaymentReceivedAlertParser,
     IciciCcTransactionAlertParser,
@@ -15,6 +18,7 @@ from bank_sms_parser.parsers.icici.cc import (
 # "Payment of Rs ... received on your ICICI Bank Credit Card"), so order is
 # mostly insurance.
 _PARSERS: tuple[BaseSmsParser, ...] = (
+    IciciAccountUpiCreditAlertParser(),
     IciciAccountTransactionAlertParser(),
     IciciCcTransactionAlertParser(),
     IciciCcPaymentReceivedAlertParser(),
@@ -37,6 +41,7 @@ def parse(
 
 __all__ = [
     "IciciAccountTransactionAlertParser",
+    "IciciAccountUpiCreditAlertParser",
     "IciciCcPaymentReceivedAlertParser",
     "IciciCcTransactionAlertParser",
     "IciciParser",

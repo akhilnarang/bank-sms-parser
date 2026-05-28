@@ -7,7 +7,8 @@ Supported SMS types:
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
 - hdfc_account_credit_alert: Savings account inbound credit ("Update! INR ... deposited ...")
-- hdfc_account_upi_debit_alert: Savings account UPI/IMPS debit ("Sent Rs.X From HDFC Bank A/C *..." and "IMPS INR X sent from HDFC Bank A/c XX...")
+- hdfc_account_imps_outward_alert: Savings account outward IMPS debit
+- hdfc_account_upi_debit_alert: Savings account UPI debit ("Sent Rs.X From HDFC Bank A/C *...")
 - hdfc_account_upi_credit_alert: Savings account UPI credit
 - hdfc_cc_smartpay_bbps_alert: SmartPay BBPS bill auto-debit on CC
 """
@@ -261,8 +262,7 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
 class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
     """HDFC credit-card bill-payment-received credit alert.
 
-    Two cosmetic body shapes share this event type (mirrors the OneCard
-    charge precedent of multiple compiled regexes in a single class):
+    Two cosmetic body shapes share this event type:
 
     variant 1 — mixed-case "Online Payment ... vide Ref# ..." template:
         "HDFC Bank Cardmember, Online Payment of Rs.100 vide
@@ -275,13 +275,11 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
          YOUR CREDIT CARD ENDING WITH 0000 ON 17-5-2026.
          YOUR AVAILABLE LIMIT IS RS. 200.00"
 
-    Semantic peer of ``axis_cc_payment_received_alert`` and
-    ``idfc_cc_payment_received_alert`` — the user's bill payment was
-    credited to the credit card (reduces CC outstanding). Direction is
-    ``credit``. The trailing ``_value Date`` repeats the same date and is
-    intentionally ignored in variant 1. ``channel`` and ``counterparty``
-    are left ``None`` because neither template carries an explicit
-    channel marker (unlike the UPI-refund shape).
+    The user's bill payment was credited to the credit card, reducing CC
+    outstanding. Direction is ``credit``. The trailing ``_value Date``
+    repeats the same date and is intentionally ignored in variant 1.
+    ``channel`` and ``counterparty`` are left ``None`` because neither
+    template carries an explicit channel marker.
     """
 
     bank = "hdfc"
@@ -437,6 +435,45 @@ class HdfcAccountUpiCreditAlertParser(BaseSmsParser):
                 counterparty=match.group("vpa"),
                 reference_number=match.group("ref"),
                 channel="upi",
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+class HdfcAccountImpsOutwardAlertParser(BaseSmsParser):
+    """HDFC savings/current-account outward IMPS debit alert."""
+
+    bank = "hdfc"
+    email_type = "hdfc_account_imps_outward_alert"
+
+    _PATTERN = re.compile(
+        r"IMPS\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"sent\s+from\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
+        r"To\s+A/c\s+(?P<dest>x+\d+)\s+"
+        r"Ref-(?P<ref>\d+)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC account outward IMPS pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Acct {match.group('dest')}",
+                reference_number=match.group("ref"),
+                channel="imps",
                 account_mask=match.group("account"),
             ),
         )
@@ -683,6 +720,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountTransactionAlertParser(),
     HdfcAccountUpiCreditAlertParser(),
     HdfcAccountCreditAlertParser(),
+    HdfcAccountImpsOutwardAlertParser(),
     HdfcAccountUpiDebitAlertParser(),
 )
 
