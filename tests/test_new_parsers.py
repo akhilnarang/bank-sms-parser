@@ -390,6 +390,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "card_mask": "0000",
         "transaction_date": datetime.date(2026, 5, 17),
     }),
+    # Mixed-case "Payment of ... was credited" variant with no reference
+    # number (distinct from the "Online Payment ... vide Ref#" shape).
+    ("hdfc", "hdfc/cc_payment_received_220.txt", {
+        "email_type": "hdfc_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("100"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "reference_number": None,
+        "transaction_date": datetime.date(2026, 5, 28),
+    }),
     ("hdfc", "hdfc/account_credit_alert.txt", {
         "email_type": "hdfc_account_credit_alert",
         "direction": "credit",
@@ -596,6 +607,19 @@ def _assert_matches(parsed, expected: dict) -> None:
         "account_mask": "000***000000",
         "balance": Decimal("0.00"),
         "channel": "card",
+    }),
+    # Jupiter Edge CC spend: ₹-prefixed amount, ISO-8601 timestamp with an
+    # embedded +05:30 (IST) offset, and no card mask in the template.
+    ("jupiter", "jupiter/cc_spend_227.txt", {
+        "email_type": "jupiter_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "card_mask": None,
+        "counterparty": "SampleMerchant Bengaluru kaIN",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 5, 29),
+        "transaction_time": datetime.time(17, 55, 25, 123456),
     }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:

@@ -275,6 +275,12 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
          YOUR CREDIT CARD ENDING WITH 0000 ON 17-5-2026.
          YOUR AVAILABLE LIMIT IS RS. 200.00"
 
+    variant 3 — mixed-case "Payment of ... was credited" template with no
+    reference number (distinct from variant 1's "Online Payment ... vide
+    Ref#"; ``DD/MON/YYYY`` date):
+        "HDFC Bank Cardmember, Payment of Rs 100 was credited to your card
+         ending 0000 on 28/MAY/2026."
+
     The user's bill payment was credited to the credit card, reducing CC
     outstanding. Direction is ``credit``. The trailing ``_value Date``
     repeats the same date and is intentionally ignored in variant 1.
@@ -301,6 +307,13 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
         re.IGNORECASE,
     )
 
+    _NO_REF = re.compile(
+        r"HDFC\s+Bank\s+Cardmember,\s+"
+        r"Payment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"was\s+credited\s+to\s+your\s+card\s+ending\s+(?P<card>\d+)\s+"
+        r"[Oo]n\s+(?P<date>\d{1,2}/[A-Za-z]+/\d{4})"
+    )
+
     def parse(
         self,
         body: str,
@@ -311,6 +324,8 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
         text = normalize_whitespace(body)
         if match := self._MIXED_CASE.search(text):
             return self._build(match, ref=match.group("ref"))
+        if match := self._NO_REF.search(text):
+            return self._build(match, ref=None)
         if match := self._UPPERCASE.search(text):
             return self._build(match, ref=None)
         raise ParseError("HDFC CC payment-received pattern did not match")
