@@ -8,6 +8,7 @@ import pytest
 from bank_sms_parser import parse_sms
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.parsers.slice import (
+    SliceAccountImpsDebitAlertParser,
     SliceAccountUpiCreditAlertParser,
     SliceAccountUpiDebitAlertParser,
     SliceCcBillPaidAlertParser,
@@ -38,6 +39,25 @@ def test_slice_account_upi_debit_alert() -> None:
     assert txn.reference_number == "123456789012"
     assert txn.channel == "upi"
     assert txn.transaction_date == datetime.date(2026, 5, 5)
+    assert txn.balance is None
+    assert txn.card_mask is None
+
+
+def test_slice_account_imps_debit_alert() -> None:
+    body = _read("slice/account_imps_debit.txt")
+    result = parse_sms("slice", body)
+    assert result.email_type == "slice_account_imps_debit_alert"
+    assert result.bank == "slice"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.direction == "debit"
+    assert txn.amount.amount == Decimal("40000")
+    assert txn.amount.currency == "INR"
+    assert txn.account_mask == "xx1234"
+    assert txn.counterparty == "JANE DOE"
+    assert txn.reference_number == "234567890123"
+    assert txn.channel == "imps"
+    assert txn.transaction_date == datetime.date(2026, 5, 30)
     assert txn.balance is None
     assert txn.card_mask is None
 
@@ -123,9 +143,23 @@ def test_account_parsers_reject_cc_bill_body() -> None:
     for parser in (
         SliceAccountUpiCreditAlertParser(),
         SliceAccountUpiDebitAlertParser(),
+        SliceAccountImpsDebitAlertParser(),
     ):
         with pytest.raises(ParseError):
             parser.parse(body)
+
+
+def test_imps_debit_parser_rejects_upi_debit_body() -> None:
+    """The IMPS debit shape must not be parsed by the UPI debit verb."""
+    body = _read("slice/account_imps_debit.txt")
+    with pytest.raises(ParseError):
+        SliceAccountUpiDebitAlertParser().parse(body)
+
+
+def test_upi_debit_parser_rejects_imps_debit_body() -> None:
+    body = _read("slice/account_upi_debit.txt")
+    with pytest.raises(ParseError):
+        SliceAccountImpsDebitAlertParser().parse(body)
 
 
 @pytest.mark.parametrize(

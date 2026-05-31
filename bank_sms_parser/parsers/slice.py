@@ -12,6 +12,9 @@ Three SMS shapes supported:
 3. ``slice_account_upi_debit_alert`` — UPI debit from the slice savings
    account. Carries amount, account mask, payee name, and a UPI
    reference. No balance.
+4. ``slice_account_imps_debit_alert`` — IMPS debit from the slice
+   savings account. Carries amount, account mask, payee name, and an
+   IMPS reference (``Ref ID:``). No balance.
 """
 
 import datetime
@@ -174,6 +177,59 @@ class SliceAccountUpiDebitAlertParser(BaseSmsParser):
         )
 
 
+class SliceAccountImpsDebitAlertParser(BaseSmsParser):
+    """slice savings account IMPS debit alert.
+
+    Sample (sanitized):
+        "IMPS payment of Rs. 40,000 from A/c xx1234 done on 30-May-26 to
+         JANE DOE is successful (Ref ID: 234567890123). Not you? Call
+         08048329999 - slice"
+
+    Distinct from ``slice_account_upi_debit_alert``: the IMPS template
+    leads with ``IMPS payment of`` (vs ``sent from``), wraps the date in
+    ``done on ... is successful``, and labels the reference ``Ref ID:``
+    (vs ``UPI Ref:``). ``channel`` is therefore ``imps``. Carries no
+    balance. For self-transfers the counterparty is the user's own name.
+    """
+
+    bank = "slice"
+    email_type = "slice_account_imps_debit_alert"
+
+    _PATTERN = re.compile(
+        r"IMPS\s+payment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"from\s+A/c\s+(?P<account>xx\d+)\s+done\s+on\s+"
+        r"(?P<date>\d{1,2}-\w+-\d{2,4})\s+to\s+(?P<recipient>.+?)\s+"
+        r"is\s+successful\s+\(Ref\s*ID:\s*(?P<ref>\w+)\)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice account IMPS debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("recipient").strip(),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="imps",
+            ),
+        )
+
+
 class SliceCcTransactionAlertParser(BaseSmsParser):
     """slice credit-card spend alert.
 
@@ -228,15 +284,16 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
 
 # Order: most-specific first. The CC bill-paid alert has a unique
 # template ("slice UPI credit card bill ... paid successfully via
-# autopay") that no other shape matches; the credit and debit account
-# alerts are distinguished by their leading verbs ("received in" vs
-# "sent from") so their relative order is not load-bearing. The CC
+# autopay") that no other shape matches; the account alerts are
+# distinguished by their leading verbs ("received in" / "sent from" /
+# "IMPS payment of") so their relative order is not load-bearing. The CC
 # spend alert is anchored on ``spent on your credit card``.
 _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceCcBillPaidAlertParser(),
     SliceCcTransactionAlertParser(),
     SliceAccountUpiCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),
+    SliceAccountImpsDebitAlertParser(),
 )
 
 
