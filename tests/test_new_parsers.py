@@ -621,6 +621,49 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": datetime.date(2026, 5, 29),
         "transaction_time": datetime.time(17, 55, 25, 123456),
     }),
+    # HDFC debit-card transaction reversal: money returned to the DC, so
+    # direction is credit. "By PAYZAPP0000000" is the reversing
+    # merchant/acquirer; the colon-separated datetime is the reversal time.
+    ("hdfc", "hdfc/dc_reversal.txt", {
+        "email_type": "hdfc_dc_reversal_alert",
+        "direction": "credit",
+        "amount": Decimal("2"),
+        "currency": "INR",
+        "card_mask": "xx0000",
+        "counterparty": "PAYZAPP0000000",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 6, 1),
+        "transaction_time": datetime.time(13, 21, 20),
+    }),
+    # IDFC outward IMPS debit phrased as "a/c ending <digits> ... debited
+    # ... and a/c ending <digits> credited (IMPS Ref no ...)". The source
+    # masks use "ending <digits>" (no XX prefix); destination account is the
+    # counterparty.
+    ("idfc", "idfc/account_imps_outward.txt", {
+        "email_type": "idfc_account_imps_outward_alert",
+        "direction": "debit",
+        "amount": Decimal("15000.00"),
+        "currency": "INR",
+        "account_mask": "XXXXXXXX000",
+        "counterparty": "Acct XXXXXXXXX000",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "transaction_date": datetime.date(2026, 6, 1),
+    }),
+    # ICICI account IMPS credit: "ICICI Bank Account XX### is credited with
+    # Rs ... by Account linked to mobile number XXXXX####. IMPS Ref. no. ...".
+    # Distinct from the UPI credit shape ("Dear Customer, Acct ... UPI:...").
+    ("icici", "icici/account_imps_credit.txt", {
+        "email_type": "icici_account_imps_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("15000.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "Mobile XXXXX00000",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "transaction_date": datetime.date(2026, 6, 1),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)

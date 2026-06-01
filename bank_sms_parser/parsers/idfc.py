@@ -225,6 +225,66 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountImpsOutwardAlertParser(BaseSmsParser):
+    """IDFC FIRST account outward IMPS debit alert.
+
+    Sample:
+        "Your a/c ending XXXXXXXX000 is debited by Rs. 15000.00 on
+         01-Jun-26 and a/c ending XXXXXXXXX000 credited (IMPS Ref no
+         000000000000 ). Team IDFC FIRST Bank"
+
+    The user's account is debited and a destination account is credited
+    via IMPS, so ``direction`` is ``debit`` and ``channel`` is ``imps``.
+    Discriminators vs the bank's other debit shapes:
+
+    - source mask is introduced by ``a/c ending <digits>`` (bare digits,
+      no ``XX`` prefix) — unlike ``IdfcAccountTransactionAlertParser``'s
+      ``A/C XX####`` / ``A/c XX####`` forms;
+    - the ``and a/c ending <digits> credited`` clause names the
+      destination account (no payee name), surfaced as the counterparty;
+    - the ``(IMPS Ref no <digits>)`` trailer (note: no period, unlike the
+      credit shape's ``IMPS Ref no. ...``) carries the reference.
+
+    The account masks are kept verbatim (the leading ``X``s are part of
+    the bank's masking, the trailing digits are the visible tail).
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_imps_outward_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+a/c\s+ending\s+(?P<account>[X\d]+)\s+is\s+debited\s+by\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-[A-Za-z]+-\d{2,4})\s+"
+        r"and\s+a/c\s+ending\s+(?P<dest>[X\d]+)\s+credited\s*"
+        r"\(IMPS\s+Ref\s+no\.?\s+(?P<ref>\d+)\s*\)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account outward IMPS pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Acct {match.group('dest')}",
+                reference_number=match.group("ref"),
+                channel="imps",
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IdfcAccountImpsCreditAlertParser(BaseSmsParser):
     """IDFC FIRST account IMPS credit from a mobile-linked account."""
 
@@ -396,6 +456,11 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
     IdfcAccountBalanceDebitAlertParser(),
     IdfcAccountTransactionAlertParser(),
+    # Outward IMPS debit: anchored on "a/c ending <digits> ... debited ...
+    # (IMPS Ref no ...)". Its "a/c ending <bare digits>" mask form is
+    # distinct from the transaction parser's "A/c XX####", so order is not
+    # load-bearing.
+    IdfcAccountImpsOutwardAlertParser(),
     IdfcAccountImpsCreditAlertParser(),
     IdfcAccountBalanceCreditAlertParser(),
     IdfcAccountCreditAlertParser(),

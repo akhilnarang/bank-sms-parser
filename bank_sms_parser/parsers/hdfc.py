@@ -2,6 +2,7 @@
 
 Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
+- hdfc_dc_reversal_alert: Debit-card transaction reversal (credit back)
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
 - hdfc_cc_refund_alert: Credit-card refund credit
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
@@ -70,6 +71,62 @@ class HdfcDcTransactionAlertParser(BaseSmsParser):
                 balance=Money(
                     amount=parse_amount(match.group("balance")), currency="INR"
                 ),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
+class HdfcDcReversalAlertParser(BaseSmsParser):
+    """HDFC debit-card transaction reversal alert.
+
+    Sample (single line; note the missing space after "Reversed!"):
+        "Transaction Reversed!On HDFC Bank DEBIT/ATM Card xx0000 Amt:
+         Rs.2 By PAYZAPP0000000 On 2026-06-01:13:21:20"
+
+    A reversal returns money to the debit-card account (e.g. a failed or
+    refunded card/PayZapp transaction), so ``direction`` is ``credit``.
+    The ``By <token>`` clause is the reversing merchant/acquirer
+    (``counterparty``); the colon-separated datetime is the reversal
+    time. The card mask uses HDFC's lowercase ``xx####`` form and is kept
+    verbatim.
+
+    The pattern tolerates the missing space between ``Reversed!`` and
+    ``On`` seen in real bodies (``Reversed!On``); ``normalize_whitespace``
+    does not insert one, so ``\\s*`` allows zero-or-more.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_dc_reversal_alert"
+
+    _PATTERN = re.compile(
+        r"Transaction\s+Reversed!\s*"
+        r"On\s+HDFC\s+Bank\s+DEBIT/ATM\s+Card\s+(?P<card>xx\d+)\s+"
+        r"Amt:\s*Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"By\s+(?P<merchant>.+?)\s+"
+        r"On\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC DC reversal alert pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("merchant").strip(),
                 card_mask=match.group("card"),
                 channel="card",
             ),
@@ -719,6 +776,9 @@ class HdfcCcSmartpayBbpsAlertParser(BaseSmsParser):
 
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
+    # DC reversal has a unique "Transaction Reversed!" banner; grouped with
+    # the DC spend for readability. Order vs the others is not load-bearing.
+    HdfcDcReversalAlertParser(),
     HdfcCcTransactionAlertParser(),
     HdfcCcRefundAlertParser(),
     # Payment-received sits after the refund (both are CC credits) and

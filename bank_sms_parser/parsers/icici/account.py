@@ -113,3 +113,60 @@ class IciciAccountUpiCreditAlertParser(BaseSmsParser):
                 account_mask=match.group("account"),
             ),
         )
+
+
+class IciciAccountImpsCreditAlertParser(BaseSmsParser):
+    """ICICI account IMPS credit from a mobile-linked account.
+
+    Sample:
+        "ICICI Bank Account XX000 is credited with Rs 15,000.00 on
+         01-Jun-26 by Account linked to mobile number XXXXX00000.
+         IMPS Ref. no. 000000000000."
+
+    Discriminators vs ``IciciAccountUpiCreditAlertParser``:
+    - leading ``ICICI Bank Account`` (UPI shape opens with
+      ``Dear Customer, Acct``);
+    - remitter is ``Account linked to mobile number <masked>`` rather
+      than a named payer;
+    - trailing ``IMPS Ref. no. <digits>.`` (the UPI shape uses
+      ``UPI:<digits>-ICICI Bank.``).
+
+    ``channel`` is ``imps``; the masked mobile is surfaced as the
+    counterparty (``Mobile XXXXX####``), mirroring the IDFC IMPS-credit
+    parser's convention.
+    """
+
+    bank = "icici"
+    email_type = "icici_account_imps_credit_alert"
+
+    _PATTERN = re.compile(
+        r"ICICI\s+Bank\s+Account\s+(?P<account>XX\d+)\s+is\s+credited\s+with\s+"
+        r"Rs\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
+        r"by\s+Account\s+linked\s+to\s+mobile\s+number\s+(?P<mobile>X+\d+)\.\s*"
+        r"IMPS\s+Ref\.?\s+no\.?\s+(?P<ref>\d+)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Mobile {match.group('mobile')}",
+                reference_number=match.group("ref"),
+                channel="imps",
+                account_mask=match.group("account"),
+            ),
+        )
