@@ -225,6 +225,55 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountRtgsDebitAlertParser(BaseSmsParser):
+    """IDFC FIRST account outward RTGS debit alert.
+
+    Sample:
+        "Your A/c XXXXXXX0000 has been debited by Rs. 200,000.00 on
+         05-06-2026. Info: RTGS/ IDFBR60000000000000000/SAMPLE NAME.
+         New bal: Rs. 99,999.99. Team IDFC FIRST Bank"
+
+    The ``Info: RTGS/ <ref>/<name>`` clause carries the RTGS reference and
+    the beneficiary name (surfaced as counterparty). ``channel="rtgs"``.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_rtgs_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+A/c\s+(?P<account>X+\d+)\s+has\s+been\s+debited\s+by\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{4})\.\s*"
+        r"Info:\s*RTGS/\s*(?P<ref>\S+?)/(?P<name>.+?)\.\s*"
+        r"New\s+bal:\s*Rs\.\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account RTGS debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("name").strip(),
+                reference_number=match.group("ref"),
+                channel="rtgs",
+                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IdfcAccountImpsOutwardAlertParser(BaseSmsParser):
     """IDFC FIRST account outward IMPS debit alert.
 
@@ -456,6 +505,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
     IdfcAccountBalanceDebitAlertParser(),
     IdfcAccountTransactionAlertParser(),
+    IdfcAccountRtgsDebitAlertParser(),
     # Outward IMPS debit: anchored on "a/c ending <digits> ... debited ...
     # (IMPS Ref no ...)". Its "a/c ending <bare digits>" mask form is
     # distinct from the transaction parser's "A/c XX####", so order is not

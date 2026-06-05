@@ -664,6 +664,30 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "imps",
         "transaction_date": datetime.date(2026, 6, 1),
     }),
+    # HDFC savings-to-PPF/SSY transfer debit; no in-body date, so
+    # transaction_date is None without received_at.
+    ("hdfc", "hdfc/account_transfer_ppf.txt", {
+        "email_type": "hdfc_account_transfer_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("100000.00"),
+        "currency": "INR",
+        "counterparty": "PPF/SSY A/c XX0000",
+        "channel": "online",
+        "transaction_date": None,
+    }),
+    # IDFC RTGS outward debit.
+    ("idfc", "idfc/account_rtgs_debit.txt", {
+        "email_type": "idfc_account_rtgs_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("200000.00"),
+        "currency": "INR",
+        "account_mask": "XXXXXXX0000",
+        "counterparty": "SAMPLE NAME",
+        "reference_number": "IDFBR60000000000000000",
+        "balance": Decimal("99999.99"),
+        "channel": "rtgs",
+        "transaction_date": datetime.date(2026, 6, 5),
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
@@ -699,6 +723,17 @@ def test_indusind_no_received_at_leaves_date_none() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date is None
     assert result.transaction.transaction_time is None
+
+
+def test_hdfc_account_transfer_uses_received_at_for_date_fallback() -> None:
+    """HDFC PPF/SSY transfer SMS carries no date; received_at (UTC→IST) fills it."""
+    body = _read("hdfc/account_transfer_ppf.txt")
+    # 2026-06-05 21:30 UTC == 2026-06-06 03:00 IST
+    received = datetime.datetime(2026, 6, 5, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("hdfc", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 6, 6)
+    assert result.transaction.transaction_time == datetime.time(3, 0)
 
 
 def test_onecard_charge_uses_received_at_for_date_fallback() -> None:

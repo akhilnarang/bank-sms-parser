@@ -12,6 +12,7 @@ Supported SMS types:
 - hdfc_account_upi_debit_alert: Savings account UPI debit ("Sent Rs.X From HDFC Bank A/C *...")
 - hdfc_account_upi_credit_alert: Savings account UPI credit
 - hdfc_cc_smartpay_bbps_alert: SmartPay BBPS bill auto-debit on CC
+- hdfc_account_transfer_debit_alert: Savings-to-PPF/SSY transfer debit
 """
 
 import datetime
@@ -774,6 +775,61 @@ class HdfcCcSmartpayBbpsAlertParser(BaseSmsParser):
         )
 
 
+class HdfcAccountTransferDebitAlertParser(BaseSmsParser):
+    """HDFC savings-to-PPF/SSY transfer debit alert.
+
+    Sample:
+        "Alert!
+         Rs. 1,00,000.00 transferred to your PPF/SSY A/c No. XX0000 via
+         HDFC Bank Online Banking.
+         Not you?Call 18002586161"
+
+    Money leaves the savings account into the user's own PPF/SSY account, so
+    ``direction`` is ``debit`` and ``channel`` is ``online``. Only the
+    destination account is in the body (surfaced as counterparty); there is
+    no in-body date, so the date falls back to ``received_at`` (UTC→IST) when
+    supplied, else stays ``None``.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_transfer_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"transferred\s+to\s+your\s+PPF/SSY\s+A/c\s+No\.\s+(?P<dest>X+\d+)\s+"
+        r"via\s+HDFC\s+Bank\s+Online\s+Banking"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC account transfer debit pattern did not match")
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                counterparty=f"PPF/SSY A/c {match.group('dest')}",
+                channel="online",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     # DC reversal has a unique "Transaction Reversed!" banner; grouped with
@@ -797,6 +853,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountCreditAlertParser(),
     HdfcAccountImpsOutwardAlertParser(),
     HdfcAccountUpiDebitAlertParser(),
+    HdfcAccountTransferDebitAlertParser(),
 )
 
 
