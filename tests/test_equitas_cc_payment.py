@@ -39,6 +39,29 @@ def test_parses_equitas_cc_payment_received() -> None:
     assert txn.balance is None
 
 
+def test_parses_equitas_cc_payment_received_thank_you_variant() -> None:
+    """The "Thank you for the payment of Rs.X towards Equitas Credit
+    Card ####" variant (DD/MM/YY date, bare 4-digit card, no reference)
+    parses to the same equitas_cc_payment_alert credit event."""
+    body = _read("equitas/cc_payment_received_thank_you.txt")
+    result = parse_sms("equitas", body)
+    assert result.email_type == "equitas_cc_payment_alert"
+    assert result.bank == "equitas"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.direction == "credit"
+    assert txn.amount.amount == Decimal("12345.00")
+    assert txn.amount.currency == "INR"
+    assert txn.card_mask == "0000"
+    assert txn.counterparty == "Payment received"
+    assert txn.channel == "card"
+    assert txn.transaction_date == datetime.date(2026, 6, 7)
+    assert txn.transaction_time is None
+    assert txn.account_mask is None
+    assert txn.balance is None
+    assert txn.reference_number is None
+
+
 def test_existing_spend_alert_does_not_match_payment_received() -> None:
     """The pre-existing 'spent' shape must still parse as the spend alert,
     not as the new payment-received parser — the two patterns are mutually

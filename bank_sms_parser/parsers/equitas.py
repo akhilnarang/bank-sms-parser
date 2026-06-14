@@ -17,9 +17,24 @@ from bank_sms_parser.parsing import (
 class EquitasCcPaymentReceivedParser(BaseSmsParser):
     """Equitas credit-card bill-payment-received notification.
 
-    Sample (sanitized):
+    Two cosmetic body shapes share this event type:
+
+    variant 1 — "INR ... was received ... credited to your Equitas Credit
+    Card XX####" (``DD/MM/YYYY`` date, masked ``XX####`` card):
         "INR 12,345.00 was received on 05/05/2026 and was credited to
          your Equitas Credit Card XX9999. Equitas SFB"
+
+    variant 2 — "Thank you for the payment of Rs.... towards Equitas
+    Credit Card ####" (``DD/MM/YY`` 2-digit-year date, bare 4-digit card,
+    no reference number):
+        "Thank you for the payment of Rs.12,345.00 towards Equitas Credit
+         Card 0000, this has been credited to your account on 07/06/26.
+         Equitas SFB"
+
+    Both reduce the credit-card outstanding, so ``direction`` is
+    ``credit`` and ``email_type`` stays ``equitas_cc_payment_alert`` for
+    downstream CC-payment reconciliation. Neither template carries a
+    reference number.
     """
 
     bank = "equitas"
@@ -32,6 +47,14 @@ class EquitasCcPaymentReceivedParser(BaseSmsParser):
         r"(?P<card>XX\d+)"
     )
 
+    _THANK_YOU = re.compile(
+        r"Thank\s+you\s+for\s+the\s+payment\s+of\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"towards\s+Equitas\s+Credit\s+Card\s+(?P<card>\d+),?\s+"
+        r"this\s+has\s+been\s+credited\s+to\s+your\s+account\s+on\s+"
+        r"(?P<date>\d{2}/\d{2}/\d{2})"
+    )
+
     def parse(
         self,
         body: str,
@@ -40,8 +63,13 @@ class EquitasCcPaymentReceivedParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if not (match := self._PATTERN.search(text)):
-            raise ParseError("Equitas CC payment-received pattern did not match")
+        if match := self._PATTERN.search(text):
+            return self._build(match)
+        if match := self._THANK_YOU.search(text):
+            return self._build(match)
+        raise ParseError("Equitas CC payment-received pattern did not match")
+
+    def _build(self, match: re.Match[str]) -> ParsedSms:
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,

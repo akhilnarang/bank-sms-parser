@@ -267,6 +267,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_time": datetime.time(19, 58, 13),
         "channel": "card",
     }),
+    # IndusInd generic account inbound credit (a refund). The "Ref-"
+    # clause is descriptive narration (the refund source), stored as
+    # counterparty; reference_number stays None so a descriptive string
+    # cannot collide downstream as a fake reference.
+    ("indusind", "indusind/account_credit.txt", {
+        "email_type": "indusind_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("1234.56"),
+        "currency": "INR",
+        "account_mask": "**0000",
+        "counterparty": "Refund Frm SampleSource Payments",
+        "reference_number": None,
+        "balance": Decimal("2345.67"),
+        "transaction_date": None,
+    }),
     ("icici", "icici/account_imps_debit.txt", {
         "email_type": "icici_account_transaction_alert",
         "direction": "debit",
@@ -464,6 +479,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         "reference_number": "000000000000",
         "channel": "card",
         "transaction_date": datetime.date(2026, 5, 12),
+    }),
+    # slice account IMPS credit (distinct from the UPI credit shape:
+    # "via IMPS" not "via UPI"). Amount arrives without decimals; the
+    # balance uses Indian digit grouping.
+    ("slice", "slice/account_imps_credit.txt", {
+        "email_type": "slice_account_imps_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("45000"),
+        "currency": "INR",
+        "account_mask": "xx0000",
+        "counterparty": "SENDER NAME",
+        "reference_number": "000000000000",
+        "channel": "imps",
+        "balance": Decimal("123456.78"),
+        "transaction_date": datetime.date(2026, 6, 11),
     }),
     # Axis CC POS/online spend (distinct from the payment-received credit):
     # in-body "DD-MM-YY HH:MM:SS IST" stamp; the "Avl Limit" credit limit
@@ -664,6 +694,64 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "imps",
         "transaction_date": datetime.date(2026, 6, 1),
     }),
+    # ICICI account "debited Rs. ... Info<X>.Avl Bal" outward debit. The
+    # Info descriptor is the channel/narration; "RTGS*<ref>" yields channel
+    # rtgs + a reference. The trailing "To dispute call..." boilerplate must
+    # never leak into counterparty/reference.
+    ("icici", "icici/account_debit_info_rtgs.txt", {
+        "email_type": "icici_account_debit_info_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "RTGS*ICICR000",
+        "reference_number": "ICICR000",
+        "channel": "rtgs",
+        "balance": Decimal("0.00"),
+        "transaction_date": datetime.date(2026, 6, 11),
+    }),
+    # Same debit shape, but "TRF TO FD no." carries no ref token — the
+    # descriptor is the narration and reference_number stays None (must not
+    # scrape boilerplate as a ref).
+    ("icici", "icici/account_debit_info_trf_fd.txt", {
+        "email_type": "icici_account_debit_info_alert",
+        "direction": "debit",
+        "amount": Decimal("23456.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "TRF TO FD no.",
+        "reference_number": None,
+        "channel": None,
+        "balance": Decimal("32109.00"),
+        "transaction_date": datetime.date(2026, 6, 11),
+    }),
+    # ICICI account "credited:Rs. ... Info <Y>. Available Balance is Rs. Z"
+    # inward credit. "BIL*INFT*<ref>*" → channel imps (INFT) + ref.
+    ("icici", "icici/account_credit_info_bil_inft.txt", {
+        "email_type": "icici_account_credit_info_alert",
+        "direction": "credit",
+        "amount": Decimal("54321.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "BIL*INFT*FFF0000000*",
+        "reference_number": "FFF0000000",
+        "channel": "imps",
+        "balance": Decimal("54321.00"),
+        "transaction_date": datetime.date(2026, 6, 11),
+    }),
+    # Same credit shape with "RTGS-<ref>-" → channel rtgs + ref.
+    ("icici", "icici/account_credit_info_rtgs.txt", {
+        "email_type": "icici_account_credit_info_alert",
+        "direction": "credit",
+        "amount": Decimal("23456.00"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "RTGS-HDFCR00000000000000000-",
+        "reference_number": "HDFCR00000000000000000",
+        "channel": "rtgs",
+        "balance": Decimal("34000.00"),
+        "transaction_date": datetime.date(2026, 6, 11),
+    }),
     # HDFC savings-to-PPF/SSY transfer debit; no in-body date, so
     # transaction_date is None without received_at.
     ("hdfc", "hdfc/account_transfer_ppf.txt", {
@@ -688,6 +776,48 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "rtgs",
         "transaction_date": datetime.date(2026, 6, 5),
     }),
+    # IDFC NEFT outward debit: same "has been debited by Rs. ... New bal:"
+    # frame as RTGS, discriminated by the "Info: NEFT/ <utr>/<name>" clause.
+    ("idfc", "idfc/account_neft_debit.txt", {
+        "email_type": "idfc_account_neft_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "account_mask": "XXXXXXX0000",
+        "counterparty": "BENEFICIARY NAME",
+        "reference_number": "IDFB0000X0000000",
+        "balance": Decimal("1234.56"),
+        "channel": "neft",
+        "transaction_date": datetime.date(2026, 6, 5),
+    }),
+    # IDFC NEFT beneficiary-received confirmation: a confirmation that a NEFT
+    # the user *initiated* reached the beneficiary. Direction=debit (money
+    # left the user); no account mask and no balance in this template.
+    ("idfc", "idfc/account_neft_beneficiary_credit.txt", {
+        "email_type": "idfc_account_neft_beneficiary_credit_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "account_mask": None,
+        "counterparty": "BENEFICIARY NAME",
+        "reference_number": "IDFB0000X0000000",
+        "channel": "neft",
+        "transaction_date": None,
+    }),
+    # HDFC RTGS "txn initiated" outward debit. This "initiated" leg is the
+    # only one parsed; the separate "RTGS Money Deposited~..." confirmation
+    # is left unparsed. No payee, no reference, no balance, no in-body date.
+    ("hdfc", "hdfc/account_rtgs_debit.txt", {
+        "email_type": "hdfc_account_rtgs_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("123456"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": None,
+        "reference_number": None,
+        "channel": "rtgs",
+        "transaction_date": None,
+    }),
 ])
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
@@ -703,6 +833,29 @@ def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:
     body = _read(fixture)
     with pytest.raises(ParseError):
         parse_sms(bank, body)
+
+
+def test_hdfc_rtgs_initiated_omits_balance_and_reference() -> None:
+    """The RTGS "initiated" alert carries neither a balance nor a
+    reference number; both must stay None rather than be fabricated."""
+    body = _read("hdfc/account_rtgs_debit.txt")
+    result = parse_sms("hdfc", body)
+    assert result.transaction is not None
+    assert result.transaction.balance is None
+    assert result.transaction.reference_number is None
+    assert result.transaction.counterparty is None
+
+
+def test_hdfc_rtgs_initiated_uses_received_at_for_date_fallback() -> None:
+    """The RTGS "initiated" body carries no date; received_at (UTC→IST)
+    fills transaction_date/time, like the bank's other dateless shapes."""
+    body = _read("hdfc/account_rtgs_debit.txt")
+    # 2026-06-13 21:30 UTC == 2026-06-14 03:00 IST
+    received = datetime.datetime(2026, 6, 13, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("hdfc", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 6, 14)
+    assert result.transaction.transaction_time == datetime.time(3, 0)
 
 
 def test_indusind_uses_received_at_for_date_fallback() -> None:

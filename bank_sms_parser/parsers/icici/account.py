@@ -2,11 +2,58 @@
 
 import datetime
 import re
+from typing import NamedTuple
 
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BaseSmsParser
 from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_date
+
+
+class _InfoFields(NamedTuple):
+    """Channel and reference extracted from an ICICI ``Info`` descriptor."""
+
+    channel: str | None
+    reference_number: str | None
+
+
+# Maps a rail token found in an ``Info`` descriptor to a channel slug. The
+# descriptor is the narration ICICI puts after ``Info``; its prefix names the
+# rail (``RTGS*ICICR120``, ``RTGS-HDFCR5...-``, ``BIL*INFT*<ref>*``).
+# ``INFT`` is ICICI's internal-funds-transfer marker, surfaced as imps.
+_INFO_CHANNELS = {
+    "RTGS": "rtgs",
+    "NEFT": "neft",
+    "IMPS": "imps",
+    "INFT": "imps",
+    "UPI": "upi",
+}
+
+# A clear reference token: an alphanumeric run with at least one letter and one
+# digit (e.g. ICICR000, HDFCR0000000000, FFF0000000), 6+ chars. This avoids
+# scraping plain words ("TRF", "TO", "FD") or the boilerplate
+# dispute/BLOCK numbers as a reference.
+_REF_TOKEN = re.compile(r"\b(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6,}\b")
+
+
+def _classify_info(descriptor: str) -> _InfoFields:
+    """Split an ICICI ``Info`` descriptor into (channel, reference_number).
+
+    ``channel`` comes from the descriptor's rail token when recognized
+    (RTGS/NEFT/IMPS/INFT/UPI), else ``None``. ``reference_number`` is the
+    first clear alphanumeric ref token, else ``None`` — descriptors like
+    ``TRF TO FD no.`` carry no ref and must stay ``None`` rather than
+    misreport a boilerplate word.
+    """
+    segments = re.split(r"[\s*\-]", descriptor.strip())
+    channel: str | None = None
+    for segment in segments:
+        if segment.upper() in _INFO_CHANNELS:
+            channel = _INFO_CHANNELS[segment.upper()]
+            break
+    ref_match = _REF_TOKEN.search(descriptor)
+    reference_number = ref_match.group(0) if ref_match else None
+    return _InfoFields(channel=channel, reference_number=reference_number)
 
 
 class IciciAccountTransactionAlertParser(BaseSmsParser):
@@ -168,5 +215,123 @@ class IciciAccountImpsCreditAlertParser(BaseSmsParser):
                 reference_number=match.group("ref"),
                 channel="imps",
                 account_mask=match.group("account"),
+            ),
+        )
+
+
+class IciciAccountDebitInfoAlertParser(BaseSmsParser):
+    """ICICI account outward debit carrying an ``Info`` narration + ``Avl Bal``.
+
+    Sample:
+        "ICICI Bank Acc XX000 debited Rs. 12,345.00 on 11-Jun-26
+         InfoRTGS*ICICR000.Avl Bal Rs. 0.00.To dispute call 18002662 or
+         SMS BLOCK 000 to 9215676766"
+
+    Discriminators vs ``IciciAccountTransactionAlertParser`` ("ICICI Bank
+    Acct ... debited with/for ..."):
+    - opens with ``ICICI Bank Acc`` (no ``t``) then ``debited Rs.``;
+    - the narration sits in an ``Info<descriptor>`` clause terminated by
+      ``.Avl Bal Rs. <balance>``.
+
+    The descriptor is surfaced as ``counterparty``; ``_classify_info`` lifts
+    the rail (channel) and a clear reference token out of it. The trailing
+    ``.To dispute call...`` boilerplate is anchored out so it can never leak
+    into counterparty/reference.
+    """
+
+    bank = "icici"
+    email_type = "icici_account_debit_info_alert"
+
+    _PATTERN = re.compile(
+        r"ICICI\s+Bank\s+Acc\s+(?P<account>XX\d+)\s+debited\s+"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
+        r"Info(?P<info>.*?)\.\s*Avl\s+Bal\s+"
+        r"Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account debit Info pattern did not match")
+        descriptor = match.group("info").strip()
+        info = _classify_info(descriptor)
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=descriptor or None,
+                reference_number=info.reference_number,
+                channel=info.channel,
+                account_mask=match.group("account"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+            ),
+        )
+
+
+class IciciAccountCreditInfoAlertParser(BaseSmsParser):
+    """ICICI account inward credit carrying an ``Info`` narration + balance.
+
+    Sample:
+        "ICICI Bank Account XX000 credited:Rs. 70,000.00 on 11-Jun-26.
+         Info BIL*INFT*FFF0000000*. Available Balance is Rs. 70,000.00."
+
+    Discriminators vs the UPI/IMPS credit shapes ("... is credited with
+    Rs ..."):
+    - ``credited:Rs.`` colon form;
+    - the narration sits in an ``Info <descriptor>`` clause followed by
+      ``Available Balance is Rs. <balance>``.
+
+    The descriptor is surfaced as ``counterparty``; ``_classify_info`` lifts
+    the rail (channel) and a clear reference token out of it.
+    """
+
+    bank = "icici"
+    email_type = "icici_account_credit_info_alert"
+
+    _PATTERN = re.compile(
+        r"ICICI\s+Bank\s+Account\s+(?P<account>XX\d+)\s+credited:\s*"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
+        r"(?P<date>\d{1,2}-\w+-\d{2,4})\.\s*"
+        r"Info\s+(?P<info>.*?)\.\s*Available\s+Balance\s+is\s+"
+        r"Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account credit Info pattern did not match")
+        descriptor = match.group("info").strip()
+        info = _classify_info(descriptor)
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=descriptor or None,
+                reference_number=info.reference_number,
+                channel=info.channel,
+                account_mask=match.group("account"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
             ),
         )

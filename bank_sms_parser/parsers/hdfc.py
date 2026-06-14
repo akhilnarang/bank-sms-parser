@@ -13,6 +13,7 @@ Supported SMS types:
 - hdfc_account_upi_credit_alert: Savings account UPI credit
 - hdfc_cc_smartpay_bbps_alert: SmartPay BBPS bill auto-debit on CC
 - hdfc_account_transfer_debit_alert: Savings-to-PPF/SSY transfer debit
+- hdfc_account_rtgs_debit_alert: Savings account outward RTGS debit ("RTGS txn initiated")
 """
 
 import datetime
@@ -830,6 +831,67 @@ class HdfcAccountTransferDebitAlertParser(BaseSmsParser):
         )
 
 
+class HdfcAccountRtgsInitiatedDebitAlertParser(BaseSmsParser):
+    """HDFC savings/current-account outward RTGS debit alert ("initiated").
+
+    Sample:
+        "RTGS txn initiated: Of Rs.123456 from your HDFC Bank A/c XX0000
+         using Online Banking. Not you?Call 18002586161/SMS BLOCK OB to
+         7308080808"
+
+    HDFC sends two SMSes per RTGS transfer: this "txn initiated" alert
+    (the outward debit leg) and a separate "RTGS Money Deposited~..."
+    tilde-format confirmation (the redundant credit leg, left unparsed).
+    Only the "initiated" alert is parsed here as the single transaction.
+
+    This shape carries amount, source account mask, and channel only. The
+    "Not you?Call .../SMS BLOCK ..." anti-fraud boilerplate is not part of
+    any field. There is no payee name, no reference number, and no balance
+    in this template, so ``counterparty``, ``reference_number``, and
+    ``balance`` stay ``None``. The body has no date, so the date falls
+    back to ``received_at`` (UTC->IST) when supplied, else stays ``None``.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_rtgs_debit_alert"
+
+    _PATTERN = re.compile(
+        r"RTGS\s+txn\s+initiated:\s*"
+        r"Of\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"from\s+your\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"using\s+Online\s+Banking"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC account RTGS initiated debit pattern did not match")
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                channel="rtgs",
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     # DC reversal has a unique "Transaction Reversed!" banner; grouped with
@@ -854,6 +916,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountImpsOutwardAlertParser(),
     HdfcAccountUpiDebitAlertParser(),
     HdfcAccountTransferDebitAlertParser(),
+    # RTGS "txn initiated" outward debit: unique "RTGS txn initiated:"
+    # anchor, so ordering vs the other account shapes is not load-bearing.
+    HdfcAccountRtgsInitiatedDebitAlertParser(),
 )
 
 

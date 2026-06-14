@@ -5,6 +5,8 @@ import datetime
 from bank_sms_parser.models import ParsedSms
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsers.icici.account import (
+    IciciAccountCreditInfoAlertParser,
+    IciciAccountDebitInfoAlertParser,
     IciciAccountImpsCreditAlertParser,
     IciciAccountTransactionAlertParser,
     IciciAccountUpiCreditAlertParser,
@@ -21,6 +23,8 @@ from bank_sms_parser.parsers.icici.cc import (
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IciciAccountUpiCreditAlertParser(),
     IciciAccountImpsCreditAlertParser(),
+    IciciAccountCreditInfoAlertParser(),
+    IciciAccountDebitInfoAlertParser(),
     IciciAccountTransactionAlertParser(),
     IciciCcTransactionAlertParser(),
     IciciCcPaymentReceivedAlertParser(),
@@ -42,6 +46,8 @@ def parse(
 
 
 __all__ = [
+    "IciciAccountCreditInfoAlertParser",
+    "IciciAccountDebitInfoAlertParser",
     "IciciAccountImpsCreditAlertParser",
     "IciciAccountTransactionAlertParser",
     "IciciAccountUpiCreditAlertParser",

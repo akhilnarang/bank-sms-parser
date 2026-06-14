@@ -15,6 +15,9 @@ Three SMS shapes supported:
 4. ``slice_account_imps_debit_alert`` — IMPS debit from the slice
    savings account. Carries amount, account mask, payee name, and an
    IMPS reference (``Ref ID:``). No balance.
+5. ``slice_account_imps_credit_alert`` — IMPS credit into the slice
+   savings account. Carries amount, account mask, payer name, an IMPS
+   reference (``Ref ID:``), and an available balance.
 """
 
 import datetime
@@ -34,7 +37,7 @@ from bank_sms_parser.parsing import (
 class SliceCcBillPaidAlertParser(BaseSmsParser):
     """slice UPI credit-card bill autopay paid notification.
 
-    Sample (sanitized):
+    Sample:
         "Your slice UPI credit card bill of Rs.2,500.00 has been paid
          successfully via autopay. Thanks for paying on time! - slice"
 
@@ -84,7 +87,7 @@ class SliceCcBillPaidAlertParser(BaseSmsParser):
 class SliceAccountUpiCreditAlertParser(BaseSmsParser):
     """slice savings account UPI credit alert.
 
-    Sample (sanitized):
+    Sample:
         "Rs. 12,000 received in slice A/c xx1234 on 03-May-26 from
          JOHN SMITH via UPI (Ref ID: 234567890123). Avl. Bal.
          Rs. 50,000.00 - slice"
@@ -135,7 +138,7 @@ class SliceAccountUpiCreditAlertParser(BaseSmsParser):
 class SliceAccountUpiDebitAlertParser(BaseSmsParser):
     """slice savings account UPI debit alert.
 
-    Sample (sanitized):
+    Sample:
         "Rs. 7,500.00 sent from a/c xx1234 on 05-May-26 to JANE DOE
          (UPI Ref: 123456789012). Not you? Call 00000000000 - slice"
     """
@@ -180,7 +183,7 @@ class SliceAccountUpiDebitAlertParser(BaseSmsParser):
 class SliceAccountImpsDebitAlertParser(BaseSmsParser):
     """slice savings account IMPS debit alert.
 
-    Sample (sanitized):
+    Sample:
         "IMPS payment of Rs. 40,000 from A/c xx1234 done on 30-May-26 to
          JANE DOE is successful (Ref ID: 234567890123). Not you? Call
          08048329999 - slice"
@@ -230,10 +233,67 @@ class SliceAccountImpsDebitAlertParser(BaseSmsParser):
         )
 
 
+class SliceAccountImpsCreditAlertParser(BaseSmsParser):
+    """slice savings account IMPS credit alert.
+
+    Sample:
+        "Rs. 90,000 received in A/c xx0000 on 11-Jun-26 from SENDER NAME
+         via IMPS (Ref ID: 000000000000). Avl. Bal. Rs. 1,62,561.06
+         - slice"
+
+    Distinct from ``slice_account_upi_credit_alert``: the IMPS inbound
+    template labels the channel ``via IMPS`` (vs ``via UPI``). The
+    reference is the numeric ``Ref ID:`` token. ``channel`` is therefore
+    ``imps``. The amount may arrive without decimals. For self-transfers
+    the counterparty is the user's own name.
+    """
+
+    bank = "slice"
+    email_type = "slice_account_imps_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+received\s+in\s+"
+        r"A/c\s+(?P<account>xx\d+)\s+on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
+        r"from\s+(?P<sender_name>.+?)\s+via\s+IMPS\s+"
+        r"\(Ref\s*ID:\s*(?P<ref>\w+)\)\.\s*"
+        r"Avl\.?\s*Bal\.?\s*Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("sender_name").strip(),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="imps",
+            ),
+        )
+
+
 class SliceCcTransactionAlertParser(BaseSmsParser):
     """slice credit-card spend alert.
 
-    Sample (sanitized):
+    Sample:
         "Rs. 100.00 spent on your credit card xx0000 at MERCHANT on
          12-May-26 (UPI Ref: 000000000000). Not you? Call 080-0000-0000
          - slice"
@@ -292,6 +352,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceCcBillPaidAlertParser(),
     SliceCcTransactionAlertParser(),
     SliceAccountUpiCreditAlertParser(),
+    SliceAccountImpsCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),
     SliceAccountImpsDebitAlertParser(),
 )

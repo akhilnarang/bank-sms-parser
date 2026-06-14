@@ -274,6 +274,113 @@ class IdfcAccountRtgsDebitAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountNeftDebitAlertParser(BaseSmsParser):
+    """IDFC FIRST account outward NEFT debit alert.
+
+    Sample:
+        "Your A/c XXXXXXX0000 has been debited by Rs. 12,345.00 on
+         05-06-2026. Info: NEFT/ IDFB0000X0000000/BENEFICIARY NAME.
+         New bal: Rs. 980.89. Team IDFC FIRST Bank"
+
+    Structurally identical to the RTGS debit shape but anchored on the
+    ``Info: NEFT/ <utr>/<name>`` clause. The clause carries the NEFT UTR
+    (surfaced as ``reference_number``) and the beneficiary name (surfaced
+    as ``counterparty``). ``channel="neft"``.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_neft_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+A/c\s+(?P<account>X+\d+)\s+has\s+been\s+debited\s+by\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{4})\.\s*"
+        r"Info:\s*NEFT/\s*(?P<ref>\S+?)/(?P<name>.+?)\.\s*"
+        r"New\s+bal:\s*Rs\.\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account NEFT debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("name").strip(),
+                reference_number=match.group("ref"),
+                channel="neft",
+                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+class IdfcAccountNeftBeneficiaryCreditAlertParser(BaseSmsParser):
+    """IDFC FIRST NEFT beneficiary-received confirmation.
+
+    Sample:
+        "Your beneficiary BENEFICIARY NAME has received Rs. 12,345.00
+         transferred via NEFT UTR IDFB0000X0000000.
+         Team IDFC First Bank."
+
+    This is a low-signal *confirmation* that a NEFT the user **initiated**
+    was received by the beneficiary — it is NOT a credit to the user's own
+    account. Per the single-event contract we parse what the body literally
+    says. ``direction="debit"`` because this event describes money leaving
+    the user (the same outflow as the NEFT debit alert, here confirmed from
+    the beneficiary's side); modelling it as a credit would falsely imply
+    the user received funds. It carries no account/card mask and no balance,
+    so those fields stay ``None``; the beneficiary name is the counterparty
+    and the UTR is the reference. Parsing it to a structured result (rather
+    than raising) stops it erroring in prod, while the distinct
+    ``idfc_account_neft_beneficiary_credit_alert`` email_type lets the
+    fetcher treat it as a confirmation and dedupe against the matching
+    NEFT debit by UTR.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_neft_beneficiary_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+beneficiary\s+(?P<name>.+?)\s+has\s+received\s+"
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"transferred\s+via\s+NEFT\s+UTR\s+(?P<ref>\S+?)\.?\s*"
+        r"Team\s+IDFC\s+First\s+Bank"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC NEFT beneficiary-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                counterparty=match.group("name").strip(),
+                reference_number=match.group("ref"),
+                channel="neft",
+            ),
+        )
+
+
 class IdfcAccountImpsOutwardAlertParser(BaseSmsParser):
     """IDFC FIRST account outward IMPS debit alert.
 
@@ -506,6 +613,13 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcAccountBalanceDebitAlertParser(),
     IdfcAccountTransactionAlertParser(),
     IdfcAccountRtgsDebitAlertParser(),
+    # Outward NEFT debit: same "has been debited by Rs. ... New bal: Rs. ..."
+    # frame as RTGS, discriminated by the "Info: NEFT/ <utr>/<name>" clause;
+    # order vs RTGS is not load-bearing (mutually exclusive rail markers).
+    IdfcAccountNeftDebitAlertParser(),
+    # NEFT beneficiary-received confirmation: unique "Your beneficiary ... has
+    # received ... via NEFT UTR ..." anchor; cannot collide with other shapes.
+    IdfcAccountNeftBeneficiaryCreditAlertParser(),
     # Outward IMPS debit: anchored on "a/c ending <digits> ... debited ...
     # (IMPS Ref no ...)". Its "a/c ending <bare digits>" mask form is
     # distinct from the transaction parser's "A/c XX####", so order is not

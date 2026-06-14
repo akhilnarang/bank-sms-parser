@@ -336,6 +336,75 @@ class IndusindAccountDcPurchaseAlertParser(BaseSmsParser):
         )
 
 
+class IndusindAccountCreditAlertParser(BaseSmsParser):
+    """IndusInd savings/current-account generic inbound credit alert.
+
+    Sample:
+        "IndusInd A/C **0000 Credited; INR 1,234.56 Ref-Refund Frm
+         SampleSource Payments.Bal INR 2,345.67.Dispute-Call
+         18602677777-IndusInd Bank"
+
+    Distinct from the UPI/IMPS credit shapes: this template uses the
+    ``A/C **####`` two-asterisk mask, a ``Credited;`` verb, an ``INR``
+    amount, a ``Ref-<text>`` narration, and a ``Bal INR`` balance. The
+    ``Ref-`` clause here is **descriptive narration** (e.g. a refund
+    source), not a numeric/alnum reference token. It is stored as the
+    ``counterparty`` (cleaned of the trailing ``Bal``/``Dispute-Call``
+    boilerplate); ``reference_number`` stays ``None`` so a descriptive
+    string cannot collide downstream as a fake reference.
+
+    The body carries no date — ``received_at`` (UTC→IST) fills the
+    transaction date/time when supplied.
+    """
+
+    bank = "indusind"
+    email_type = "indusind_account_credit_alert"
+
+    _PATTERN = re.compile(
+        r"IndusInd\s+A/C\s+(?P<account>\*\*\d+)\s+Credited;\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+Ref-(?P<ref>.+?)\.\s*"
+        r"Bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IndusInd account credit pattern did not match")
+
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                counterparty=match.group("ref").strip(),
+                reference_number=None,
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
 class IndusindCcSpendAlertParser(BaseSmsParser):
     """IndusInd credit-card spend alert.
 
@@ -403,6 +472,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IndusindCcSpendAlertParser(),
     IndusindAccountUpiCreditAlertParser(),
     IndusindAccountUpiDebitAlertParser(),
+    IndusindAccountCreditAlertParser(),
     IndusindAccountDcPurchaseAlertParser(),
     IndusindAccountTransactionAlertParser(),
 )
