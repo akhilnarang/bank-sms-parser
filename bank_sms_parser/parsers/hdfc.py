@@ -7,7 +7,7 @@ Supported SMS types:
 - hdfc_cc_refund_alert: Credit-card refund credit
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
-- hdfc_account_credit_alert: Savings account inbound credit ("Update! INR ... deposited ...")
+- hdfc_account_credit_alert: Savings account inbound credit ("Update! INR ... deposited ..."); FT- and NEFT Cr- variants
 - hdfc_account_imps_outward_alert: Savings account outward IMPS debit
 - hdfc_account_upi_debit_alert: Savings account UPI debit ("Sent Rs.X From HDFC Bank A/C *...")
 - hdfc_account_upi_credit_alert: Savings account UPI credit
@@ -654,18 +654,30 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
 class HdfcAccountCreditAlertParser(BaseSmsParser):
     """HDFC savings/current-account inbound credit alert ("Update!" template).
 
-    Sample (multi-line in the wire body; whitespace is normalized first):
+    Two cosmetic variants of the same "Update! ... deposited ..." deposit
+    template share this event type, distinguished by the transfer tag:
+
+    1) ``for FT-`` — generic fund transfer (``channel="imps"``):
         "Update! INR 100.00 deposited in HDFC Bank A/c XX0000 on
          16-MAY-26 for FT- CUSTOMER NAME-XXXXXXXXXX0000 - REMITTER
          NAME.Avl bal INR 200.00. Cheque deposits in A/C are subject
          to clearing"
 
-    The "FT-" prefix indicates a fund transfer; the trailing remitter
-    name (after the second "-" and before the period that opens
-    ``Avl bal``) is the counterparty. Default channel to ``imps`` —
-    HDFC's "Update!" deposit template is the IMPS counterpart of the
-    "Sent ..." debit template, and "FT-" is HDFC's tag for inbound
-    fund transfers in this family.
+       The trailing remitter name (after the second "-" and before the
+       period that opens ``Avl bal``) is the counterparty. Default
+       channel to ``imps`` — HDFC's "Update!" deposit template is the
+       IMPS counterpart of the "Sent ..." debit template, and "FT-" is
+       HDFC's tag for inbound fund transfers in this family.
+
+    2) ``for NEFT Cr-`` — inbound NEFT credit (``channel="neft"``):
+        "Update! INR 100.00 deposited in HDFC Bank A/c XX0000 on
+         29-JUN-26 for NEFT Cr-SAMPLE0INBX01-Sample Remitter Inc-Customer
+         Name-SAMPLEH00000000000.Avl bal INR 200.00. Cheque deposits in
+         A/C are subject to clearing"
+
+       The NEFT reference is structured ``<route>-<remitter>-<beneficiary>
+       -<UTR>``. The remitter (first dash-segment after the route code) is
+       the counterparty; the beneficiary is the user.
     """
 
     bank = "hdfc"
@@ -679,6 +691,20 @@ class HdfcAccountCreditAlertParser(BaseSmsParser):
         r"\.\s*Avl\s+bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
     )
 
+    _NEFT_PATTERN = re.compile(
+        r"Update!\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"deposited\s+in\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"on\s+(?P<date>\d{2}-[A-Z]+-\d{2})\s+"
+        # Reference is "<route>-<remitter>-<beneficiary>-<UTR>". Route is a
+        # hyphen-free code and the UTR is a hyphen-free token; the remitter
+        # is captured greedily so a hyphenated remitter name (e.g.
+        # "STATE-BANK") stays intact, leaving the single-segment beneficiary
+        # (the user) and the UTR pinned to the right.
+        r"for\s+NEFT\s+Cr-(?P<route>[^-]+)-(?P<counterparty>.+)-"
+        r"(?P<beneficiary>[^-]+)-(?P<ref>[^-.]+?)"
+        r"\.\s*Avl\s+bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
     def parse(
         self,
         body: str,
@@ -687,6 +713,25 @@ class HdfcAccountCreditAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
+        if match := self._NEFT_PATTERN.search(text):
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="credit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=match.group("counterparty").strip(),
+                    reference_number=match.group("ref").strip(),
+                    channel="neft",
+                    balance=Money(
+                        amount=parse_amount(match.group("balance")), currency="INR"
+                    ),
+                    account_mask=match.group("account"),
+                ),
+            )
         if not (match := self._PATTERN.search(text)):
             raise ParseError("HDFC account credit-alert pattern did not match")
         return ParsedSms(

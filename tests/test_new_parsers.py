@@ -427,6 +427,35 @@ def _assert_matches(parsed, expected: dict) -> None:
         "balance": Decimal("200.00"),
         "transaction_date": datetime.date(2026, 5, 16),
     }),
+    # NEFT inbound credit: same "Update! ... deposited ..." template as the
+    # FT- variant above, but the transfer tag is "for NEFT Cr-<route>-
+    # <remitter>-<beneficiary>-<UTR>". Counterparty is the remitter.
+    ("hdfc", "hdfc/account_neft_credit.txt", {
+        "email_type": "hdfc_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "Sample Remitter Inc",
+        "channel": "neft",
+        "balance": Decimal("200.00"),
+        "transaction_date": datetime.date(2026, 6, 29),
+    }),
+    # Hyphenated remitter name must stay intact in the counterparty (the
+    # greedy remitter capture leaves the single-segment beneficiary and UTR
+    # pinned to the right).
+    ("hdfc", "hdfc/account_neft_credit_hyphenated.txt", {
+        "email_type": "hdfc_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": "State-Bank Remitter",
+        "channel": "neft",
+        "reference_number": "SAMPLEH00000000000",
+        "balance": Decimal("200.00"),
+        "transaction_date": datetime.date(2026, 6, 29),
+    }),
     ("hdfc", "hdfc/account_upi_debit.txt", {
         "email_type": "hdfc_account_upi_debit_alert",
         "direction": "debit",
