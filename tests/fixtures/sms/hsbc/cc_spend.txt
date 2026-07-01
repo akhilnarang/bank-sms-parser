@@ -1,0 +1,1 @@
+HSBC creditcard xxxxx0000 used at SampleMerchant Store for INR 100.00 on 01/07/26.Limit Rs 99999.99 Due Rs 5000.00.Report fraud on +910000000000

@@ -498,6 +498,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "card_mask": "XX0000",
         "transaction_date": datetime.date(2026, 5, 21),
     }),
+    # HSBC credit-card spend: lowercase "xxxxx####" card mask, "used at"
+    # merchant, "for INR", DD/MM/YY date, and "Limit Rs" available credit
+    # limit stored in balance (the trailing "Due Rs" outstanding is dropped).
+    ("hsbc", "hsbc/cc_spend.txt", {
+        "email_type": "hsbc_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "card_mask": "xxxxx0000",
+        "counterparty": "SampleMerchant Store",
+        "balance": Decimal("99999.99"),
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 1),
+    }),
     ("slice", "slice/cc_spend.txt", {
         "email_type": "slice_cc_transaction_alert",
         "direction": "debit",
@@ -992,6 +1006,18 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
         "equitas",
         "Dear Customer, your Equitas CC XX0000 statement is now available. "
         "Login to view.",
+    ),
+    # HSBC spend truncated before the "Limit Rs" clause — the available-limit
+    # clause is a mandatory truncation guard, so this must not parse.
+    (
+        "hsbc",
+        "HSBC creditcard xxxxx0000 used at SampleMerchant Store for INR "
+        "100.00 on 01/07/26.",
+    ),
+    # HSBC OTP surface form: card mask + amount present but no "used at" verb.
+    (
+        "hsbc",
+        "HSBC creditcard xxxxx0000 OTP for INR 100.00 is 123456. Do not share.",
     ),
 ])
 def test_synthetic_adversarial_bodies_raise_parse_error(bank, body) -> None:
