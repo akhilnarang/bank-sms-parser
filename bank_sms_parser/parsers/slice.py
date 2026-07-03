@@ -401,6 +401,59 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
         )
 
 
+class SliceCcRefundAlertParser(BaseSmsParser):
+    """slice credit-card refund notification.
+
+    Sample:
+        "Refund of Rs. 500 from SampleMerchant has been successfully
+         processed to your credit card xxxx0000 - slice"
+
+    Direction is ``credit`` because a refund credits the card. The body
+    carries the merchant (``from ...``) and a four-x card mask
+    (``xxxx0000``, distinct from the spend shape's two-x ``xx0000``) but
+    no in-body date and no reference: ``received_at`` (UTC→IST) fills the
+    transaction date when supplied.
+    """
+
+    bank = "slice"
+    email_type = "slice_cc_refund_alert"
+
+    _PATTERN = re.compile(
+        r"Refund\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+"
+        r"(?P<merchant>.+?)\s+has\s+been\s+successfully\s+processed\s+to\s+"
+        r"your\s+credit\s+card\s+(?P<card>x{2,}\d+)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice CC refund pattern did not match")
+        txn_date: datetime.date | None = None
+        if received_at is not None:
+            txn_date = received_at_to_ist(received_at).date()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 # Order: most-specific first. The CC bill-paid alert has a unique
 # template ("slice UPI credit card bill ... paid successfully via
 # autopay") that no other shape matches; the manual-repayment alert is
@@ -408,11 +461,13 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
 # the account alerts are distinguished by their leading verbs ("received
 # in" / "sent from" / "IMPS payment of") so their relative order is not
 # load-bearing. The CC spend alert is anchored on ``spent on your credit
+# card`` and the refund alert on ``Refund of Rs. ... to your credit
 # card``.
 _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceCcBillPaidAlertParser(),
     SliceCcRepaymentReceivedAlertParser(),
     SliceCcTransactionAlertParser(),
+    SliceCcRefundAlertParser(),
     SliceAccountUpiCreditAlertParser(),
     SliceAccountImpsCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),

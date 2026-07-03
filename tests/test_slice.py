@@ -12,6 +12,7 @@ from bank_sms_parser.parsers.slice import (
     SliceAccountUpiCreditAlertParser,
     SliceAccountUpiDebitAlertParser,
     SliceCcBillPaidAlertParser,
+    SliceCcRefundAlertParser,
     SliceCcRepaymentReceivedAlertParser,
     SliceCcTransactionAlertParser,
 )
@@ -149,6 +150,37 @@ def test_slice_cc_repayment_received_alert_without_received_at_leaves_date_none(
     assert txn.transaction_time is None
 
 
+def test_slice_cc_refund_alert_with_received_at() -> None:
+    body = _read("slice/cc_refund.txt")
+    # 2026-05-04 21:30 UTC == 2026-05-05 03:00 IST
+    received = datetime.datetime(2026, 5, 4, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("slice", body, received_at=received)
+    assert result.email_type == "slice_cc_refund_alert"
+    assert result.bank == "slice"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.direction == "credit"
+    assert txn.amount.amount == Decimal("500")
+    assert txn.amount.currency == "INR"
+    assert txn.counterparty == "SampleMerchant"
+    assert txn.card_mask == "xxxx0000"
+    assert txn.channel == "card"
+    assert txn.account_mask is None
+    assert txn.reference_number is None
+    assert txn.transaction_date == datetime.date(2026, 5, 5)
+
+
+def test_slice_cc_refund_alert_without_received_at_leaves_date_none() -> None:
+    """Body has no date; without received_at, transaction_date stays None."""
+    body = _read("slice/cc_refund.txt")
+    result = parse_sms("slice", body)
+    assert result.email_type == "slice_cc_refund_alert"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.transaction_date is None
+    assert txn.transaction_time is None
+
+
 # Negative cases -------------------------------------------------------------
 
 
@@ -216,6 +248,17 @@ def test_account_parsers_reject_repayment_body() -> None:
             parser.parse(body)
 
 
+def test_refund_parser_rejects_cc_spend_body() -> None:
+    """The CC spend (debit) shape must not be parsed as a refund."""
+    body = _read("slice/cc_spend.txt")
+    with pytest.raises(ParseError):
+        SliceCcRefundAlertParser().parse(body)
+
+
+def test_cc_spend_parser_rejects_refund_body() -> None:
+    body = _read("slice/cc_refund.txt")
+    with pytest.raises(ParseError):
+        SliceCcTransactionAlertParser().parse(body)
 
 
 def test_imps_debit_parser_rejects_upi_debit_body() -> None:
@@ -250,6 +293,9 @@ def test_upi_debit_parser_rejects_imps_debit_body() -> None:
         # confirmation sentence.
         "Repayment of Rs.5,000 or more on the slice credit card earns "
         "you bonus rewards this month. T&C apply.",
+        # Refund near-miss: pending, not "has been successfully processed".
+        "Refund of Rs. 500 from SampleMerchant is being processed to "
+        "your credit card xxxx0000 - slice",
         # Empty body would never reach the parser (api rejects), but a
         # whitespace-padded non-matching body must still raise.
         "Hi from slice — nothing transactional here.",

@@ -533,6 +533,18 @@ def _assert_matches(parsed, expected: dict) -> None:
         "counterparty": "Bill repayment",
         "channel": "card",
     }),
+    # slice CC refund (credit back to the card). Merchant in "from ...",
+    # a four-x card mask (xxxx0000, distinct from the spend shape's
+    # xx0000), no in-body date, no reference.
+    ("slice", "slice/cc_refund.txt", {
+        "email_type": "slice_cc_refund_alert",
+        "direction": "credit",
+        "amount": Decimal("500"),
+        "currency": "INR",
+        "card_mask": "xxxx0000",
+        "counterparty": "SampleMerchant",
+        "channel": "card",
+    }),
     # slice account IMPS credit (distinct from the UPI credit shape:
     # "via IMPS" not "via UPI"). Amount arrives without decimals; the
     # balance uses Indian digit grouping.
