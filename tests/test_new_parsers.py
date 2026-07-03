@@ -523,6 +523,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 5, 12),
     }),
+    # slice CC manual repayment received (autopay paused/off). No mask,
+    # no date, no ref; counterparty is the constant "Bill repayment".
+    ("slice", "slice/cc_repayment_received.txt", {
+        "email_type": "slice_cc_repayment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("3750"),
+        "currency": "INR",
+        "counterparty": "Bill repayment",
+        "channel": "card",
+    }),
     # slice account IMPS credit (distinct from the UPI credit shape:
     # "via IMPS" not "via UPI"). Amount arrives without decimals; the
     # balance uses Indian digit grouping.

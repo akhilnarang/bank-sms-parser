@@ -12,6 +12,8 @@ from bank_sms_parser.parsers.slice import (
     SliceAccountUpiCreditAlertParser,
     SliceAccountUpiDebitAlertParser,
     SliceCcBillPaidAlertParser,
+    SliceCcRepaymentReceivedAlertParser,
+    SliceCcTransactionAlertParser,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "sms"
@@ -114,6 +116,39 @@ def test_slice_cc_bill_paid_alert_without_received_at_leaves_date_none() -> None
     assert txn.transaction_time is None
 
 
+def test_slice_cc_repayment_received_alert_with_received_at() -> None:
+    body = _read("slice/cc_repayment_received.txt")
+    # 2026-05-04 21:30 UTC == 2026-05-05 03:00 IST
+    received = datetime.datetime(2026, 5, 4, 21, 30, tzinfo=datetime.UTC)
+    result = parse_sms("slice", body, received_at=received)
+    assert result.email_type == "slice_cc_repayment_received_alert"
+    assert result.bank == "slice"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.direction == "credit"
+    assert txn.amount.amount == Decimal("3750")
+    assert txn.amount.currency == "INR"
+    assert txn.counterparty == "Bill repayment"
+    assert txn.channel == "card"
+    assert txn.card_mask is None
+    assert txn.account_mask is None
+    assert txn.reference_number is None
+    assert txn.transaction_date == datetime.date(2026, 5, 5)
+
+
+def test_slice_cc_repayment_received_alert_without_received_at_leaves_date_none() -> (
+    None
+):
+    """Body has no date; without received_at, transaction_date stays None."""
+    body = _read("slice/cc_repayment_received.txt")
+    result = parse_sms("slice", body)
+    assert result.email_type == "slice_cc_repayment_received_alert"
+    txn = result.transaction
+    assert txn is not None
+    assert txn.transaction_date is None
+    assert txn.transaction_time is None
+
+
 # Negative cases -------------------------------------------------------------
 
 
@@ -149,6 +184,40 @@ def test_account_parsers_reject_cc_bill_body() -> None:
             parser.parse(body)
 
 
+def test_repayment_parser_rejects_bill_paid_body() -> None:
+    """The autopay bill-paid shape must not be parsed as a repayment."""
+    body = _read("slice/cc_bill_paid.txt")
+    with pytest.raises(ParseError):
+        SliceCcRepaymentReceivedAlertParser().parse(body)
+
+
+def test_bill_paid_parser_rejects_repayment_body() -> None:
+    """The manual-repayment shape must not be parsed as an autopay bill payment."""
+    body = _read("slice/cc_repayment_received.txt")
+    with pytest.raises(ParseError):
+        SliceCcBillPaidAlertParser().parse(body)
+
+
+def test_cc_spend_parser_rejects_repayment_body() -> None:
+    """The CC spend (debit) parser must not claim the repayment credit."""
+    body = _read("slice/cc_repayment_received.txt")
+    with pytest.raises(ParseError):
+        SliceCcTransactionAlertParser().parse(body)
+
+
+def test_account_parsers_reject_repayment_body() -> None:
+    body = _read("slice/cc_repayment_received.txt")
+    for parser in (
+        SliceAccountUpiCreditAlertParser(),
+        SliceAccountUpiDebitAlertParser(),
+        SliceAccountImpsDebitAlertParser(),
+    ):
+        with pytest.raises(ParseError):
+            parser.parse(body)
+
+
+
+
 def test_imps_debit_parser_rejects_upi_debit_body() -> None:
     """The IMPS debit shape must not be parsed by the UPI debit verb."""
     body = _read("slice/account_imps_debit.txt")
@@ -173,6 +242,14 @@ def test_upi_debit_parser_rejects_imps_debit_body() -> None:
         "Your slice credit card statement for Apr-26 is ready. Login to view.",
         # Truncated debit body missing the UPI Ref clause.
         "Rs. 500 sent from a/c xx1234 on 05-May-26 to JANE DOE.",
+        # OTP that quotes the repayment prefix but lacks the "credited to
+        # your card account" confirmation clause — must not parse.
+        "Your OTP for repayment of Rs.5,000 received for the slice "
+        "credit card is 123456. Do not share.",
+        # Promo that reuses "Repayment of Rs. ..." wording without the
+        # confirmation sentence.
+        "Repayment of Rs.5,000 or more on the slice credit card earns "
+        "you bonus rewards this month. T&C apply.",
         # Empty body would never reach the parser (api rejects), but a
         # whitespace-padded non-matching body must still raise.
         "Hi from slice — nothing transactional here.",
