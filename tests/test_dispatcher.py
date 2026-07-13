@@ -54,6 +54,36 @@ class _AlwaysStubParser(BaseSmsParser):
         raise ParserStubError("not implemented")
 
 
+class _StubNamedMissParser(BaseSmsParser):
+    """Stub-named parser that does NOT recognize the body (plain ParseError)."""
+
+    bank = "test"
+    email_type = "test_notice_stub"
+
+    def parse(self, body, *, sender=None, received_at=None):
+        raise ParseError("did not recognize")
+
+
+class _MixedCaseStubMissParser(BaseSmsParser):
+    """Stub with a mixed-case suffix; downstream greps msg.lower()."""
+
+    bank = "test"
+    email_type = "test_notice_Stub"
+
+    def parse(self, body, *, sender=None, received_at=None):
+        raise ParseError("did not recognize")
+
+
+class _CrashesWithStubTextParser(BaseSmsParser):
+    """Buggy parser whose unexpected exception text names a stub email_type."""
+
+    bank = "test"
+    email_type = "test_buggy"
+
+    def parse(self, body, *, sender=None, received_at=None):
+        raise RuntimeError("test_notice_stub misconfigured")
+
+
 class _AlwaysUnexpectedParser(BaseSmsParser):
     bank = "test"
     email_type = "test_boom"
@@ -95,6 +125,46 @@ class TestParseWithParsers:
             parse_with_parsers("test", "body", parsers)
         assert "test_parse_error" in str(excinfo.value)
         assert "test_stub" in str(excinfo.value)
+
+    def test_recognized_stub_keeps_stub_marker_in_message(self) -> None:
+        # A ParserStubError means the stub positively recognized the shape;
+        # downstream greps "_stub" in the message to disposition the row as
+        # skipped, so the full email_type must appear verbatim.
+        parsers = [_AlwaysParseErrorParser(), _AlwaysStubParser()]
+        with pytest.raises(ParseError) as excinfo:
+            parse_with_parsers("test", "body", parsers)
+        assert "test_stub: ParserStubError" in str(excinfo.value)
+
+    def test_unrecognized_stub_never_leaks_stub_marker(self) -> None:
+        # A stub-named parser that raised plain ParseError did NOT recognize
+        # the body. Its "_stub" suffix must be elided from the aggregate
+        # message ("Tried:" list included), otherwise every unparseable SMS
+        # for the bank would be dispositioned as skipped downstream.
+        parsers = [_AlwaysParseErrorParser(), _StubNamedMissParser()]
+        with pytest.raises(ParseError) as excinfo:
+            parse_with_parsers("test", "body", parsers)
+        msg = str(excinfo.value)
+        assert "_stub" not in msg
+        assert "test_notice (stub; did not recognize)" in msg
+
+    def test_mixed_case_stub_suffix_is_still_elided(self) -> None:
+        # Downstream greps msg.lower(), so the elision predicate must be
+        # case-insensitive too.
+        parsers = [_MixedCaseStubMissParser()]
+        with pytest.raises(ParseError) as excinfo:
+            parse_with_parsers("test", "body", parsers)
+        assert "_stub" not in str(excinfo.value).lower()
+
+    def test_unexpected_exception_text_cannot_smuggle_stub_marker(self) -> None:
+        # A buggy parser crashing with a stub email_type in its exception
+        # message must not trip the downstream "_stub" skip-grep; the raw
+        # exception is still preserved on __cause__.
+        parsers = [_CrashesWithStubTextParser()]
+        with pytest.raises(ParseError) as excinfo:
+            parse_with_parsers("test", "body", parsers)
+        assert "_stub" not in str(excinfo.value).lower()
+        assert "misconfigured" in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, RuntimeError)
 
     def test_unexpected_exception_does_not_short_circuit(self) -> None:
         parsers = [_AlwaysUnexpectedParser(), _AlwaysSucceedsParser()]
