@@ -4,6 +4,7 @@ Supported SMS types:
 - hdfc_dc_transaction_alert: Debit-card POS/online spend
 - hdfc_dc_reversal_alert: Debit-card transaction reversal (credit back)
 - hdfc_cc_transaction_alert: Credit-card POS/online spend
+- hdfc_cc_reversal_alert: Credit-card transaction reversal (credit back)
 - hdfc_cc_refund_alert: Credit-card refund credit
 - hdfc_cc_payment_received_alert: Credit-card bill-payment credit
 - hdfc_account_transaction_alert: Savings account IMPS credit
@@ -135,16 +136,80 @@ class HdfcDcReversalAlertParser(BaseSmsParser):
         )
 
 
+class HdfcCcReversalAlertParser(BaseSmsParser):
+    """HDFC credit-card transaction reversal alert.
+
+    Sample (single line; note the missing space after "Reversed!"):
+        "Transaction Reversed!On HDFC Bank CREDIT Card xx0000 Amt:
+         Rs.2 By PAYZAPP0000000 On 2026-07-06:17:23:32"
+
+    Same "Transaction Reversed!" template family as the debit-card
+    reversal, but on the CREDIT card — a different instrument, so it gets
+    its own CC-prefixed ``email_type`` (mirroring the bank's separate
+    ``hdfc_dc_transaction_alert`` / ``hdfc_cc_transaction_alert`` split).
+    A reversal returns money to the card, so ``direction`` is ``credit``.
+    The ``By <token>`` clause is the reversing merchant/acquirer
+    (``counterparty``); the colon-separated datetime is the reversal time.
+    The lowercase ``xx####`` card mask is kept verbatim, and ``\\s*`` after
+    ``Reversed!`` tolerates the glued ``Reversed!On`` seen in real bodies.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_cc_reversal_alert"
+
+    _PATTERN = re.compile(
+        r"Transaction\s+Reversed!\s*"
+        r"On\s+HDFC\s+Bank\s+CREDIT\s+Card\s+(?P<card>xx\d+)\s+"
+        r"Amt:\s*Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"By\s+(?P<merchant>.+?)\s+"
+        r"On\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC CC reversal alert pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 class HdfcCcTransactionAlertParser(BaseSmsParser):
     """HDFC credit-card spend alert.
 
-    Two body shapes share this event type (same CC debit, different rail);
-    both emit ``hdfc_cc_transaction_alert`` and are distinguished by
-    ``channel``.
+    Three body shapes share this event type (same CC debit, different rail
+    or phrasing); all emit ``hdfc_cc_transaction_alert`` and the rails are
+    distinguished by ``channel``.
 
     1) POS / online spend (``channel="card"``):
         "Spent Rs.10290 On HDFC Bank Card 0000 At MERCHANT On
          2026-05-02:22:26:01.Not You? To Block+Reissue Call ..."
+
+    1b) Amount-first POS / online spend (``channel="card"``) — cosmetic
+    rewording of (1): lowercase verbs, amount before the verb, x-prefixed
+    card mask, and a "Not U?" trailer glued to the datetime's period
+    (``normalize_whitespace`` does not insert the missing space; the
+    pattern tolerates the glued text and requires the trailer's
+    "SMS BLOCK CC" — the only credit-card discriminator in this shape):
+        "Rs.569 spent on HDFC Bank Card x0000 at MERCHANT on
+         2026-07-12:17:00:56.Not U? To Block & Reissue Call ..."
 
     2) Credit-card-on-UPI spend (``channel="upi"``):
         "Txn Rs.100.00
@@ -177,6 +242,20 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         r"On\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})\."
     )
 
+    # Amount-first rewording of _PATTERN. Kept case-sensitive and narrow:
+    # lowercase "spent on"/"at"/"on" and an x-prefixed mask are exactly what
+    # the real template uses. The "SMS BLOCK CC" trailer is required — it is
+    # the only marker that says credit card despite the DC-style x#### mask,
+    # so an amount-first debit-card variant ("SMS BLOCK DC") cannot be
+    # mislabeled with this CC email_type.
+    _AMOUNT_FIRST_PATTERN = re.compile(
+        r"Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"spent\s+on\s+HDFC\s+Bank\s+Card\s+(?P<card>x\d+)\s+"
+        r"at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<datetime>\d{4}-\d{2}-\d{2}:\d{2}:\d{2}:\d{2})\."
+        r".*?SMS\s+BLOCK\s+CC\b"
+    )
+
     _UPI_PATTERN = re.compile(
         r"Txn\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"On\s+HDFC\s+Bank\s+Card\s+(?P<card>\d+)\s+"
@@ -193,7 +272,9 @@ class HdfcCcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if match := self._PATTERN.search(text):
+        if match := self._PATTERN.search(text) or self._AMOUNT_FIRST_PATTERN.search(
+            text
+        ):
             dt = parse_datetime(match.group("datetime"))
             return ParsedSms(
                 email_type=self.email_type,
@@ -942,6 +1023,11 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # DC reversal has a unique "Transaction Reversed!" banner; grouped with
     # the DC spend for readability. Order vs the others is not load-bearing.
     HdfcDcReversalAlertParser(),
+    # CC reversal shares the "Transaction Reversed!" banner but requires the
+    # literal "CREDIT Card" (the DC parser requires "DEBIT/ATM Card"), so the
+    # two are mutually exclusive and ordering between them is not
+    # load-bearing.
+    HdfcCcReversalAlertParser(),
     HdfcCcTransactionAlertParser(),
     HdfcCcRefundAlertParser(),
     # Payment-received sits after the refund (both are CC credits) and

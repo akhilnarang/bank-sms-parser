@@ -68,7 +68,69 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
         )
 
 
-_PARSERS: tuple[BaseSmsParser, ...] = (HsbcCcTransactionAlertParser(),)
+class HsbcCcPaymentReceivedAlertParser(BaseSmsParser):
+    """HSBC credit-card bill-payment-received credit alert.
+
+    Sample shape::
+
+        "Dear Customer, we have received a payment of INR 15000.00 for
+         credit card ending 0000 on 02-JUL-26. Thank you for using HSBC
+         credit card."
+
+    A payment toward the card reduces the CC outstanding, so ``direction``
+    is ``credit`` and ``channel`` is ``card``. The card mask is the bare
+    last digits after ``credit card ending`` (kept verbatim, matching the
+    HDFC ``card ending ####`` convention); the date is ``DD-MON-YY``
+    (``dayfirst`` handles it). The template names no payer, so the constant
+    ``"Payment received"`` counterparty mirrors the Equitas CC payment
+    precedent. The trailing "Thank you for using HSBC credit card" sentence
+    is boilerplate and intentionally unanchored.
+    """
+
+    bank = "hsbc"
+    email_type = "hsbc_cc_payment_received_alert"
+
+    _PATTERN = re.compile(
+        r"we\s+have\s+received\s+a\s+payment\s+of\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"for\s+credit\s+card\s+ending\s+(?P<card>\d+)\s+"
+        r"on\s+(?P<date>\d{1,2}-[A-Za-z]{3}-\d{2,4})\b",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HSBC CC payment-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty="Payment received",
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
+_PARSERS: tuple[BaseSmsParser, ...] = (
+    HsbcCcTransactionAlertParser(),
+    # Payment-received alert: anchored on "we have received a payment of
+    # INR ... for credit card ending"; cannot collide with the spend
+    # shape's "used at" anchor, so order is not load-bearing.
+    HsbcCcPaymentReceivedAlertParser(),
+)
 
 
 class HsbcParser(BankSmsParser):

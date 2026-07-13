@@ -3,7 +3,7 @@
 import datetime
 import re
 
-from bank_sms_parser.exceptions import ParseError
+from bank_sms_parser.exceptions import ParseError, ParserStubError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
@@ -132,9 +132,140 @@ class EquitasCcTransactionAlertParser(BaseSmsParser):
         )
 
 
+class EquitasCcPaymentDueStubParser(BaseSmsParser):
+    """Recognize-and-skip stub for the Equitas CC payment-due reminder.
+
+    Sample (sender AD-EQUTAS-S):
+
+        "Payment of Equitas Credit Card 0000 is due on 10/07/26. Min due
+         Rs 1234.56 Total due Rs 12345.67. Non payment is reported to
+         Credit Bureau. Pls ignore if paid"
+
+    This is a reminder, not a transaction: no money moved and there is no
+    canonical debit/credit verb. ``SmsTransactionAlert`` only models real
+    money movement, so per the skill we recognize the shape and raise
+    ``ParserStubError`` (intentionally unimplemented) rather than let it
+    surface as a generic regex miss. The anchor phrase "Payment of Equitas
+    Credit Card <digits> is due on" cannot appear in the bank's spend
+    ("spent on Equitas CC") or payment-received ("was received" / "Thank
+    you for the payment of") templates.
+    """
+
+    bank = "equitas"
+    email_type = "equitas_cc_payment_due_stub"
+
+    _PATTERN = re.compile(
+        r"Payment\s+of\s+Equitas\s+Credit\s+Card\s+\S+\s+is\s+due\s+on",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not self._PATTERN.search(text):
+            raise ParseError("Equitas payment-due reminder pattern did not match")
+        raise ParserStubError(
+            "equitas_cc_payment_due_stub: recognized Equitas CC payment-due "
+            "reminder; not a transaction, intentionally unimplemented"
+        )
+
+
+class EquitasCcStatementNoticeStubParser(BaseSmsParser):
+    """Recognize-and-skip stub for the Equitas CC statement-generated notice.
+
+    Sample (sender AD-EQUTAS-S):
+
+        "Statement for your Equitas Credit Card 0000 is generated. Total
+         Due: 12345.67 Min Due: 1234.56 Due by: 09/06/26. Pls pay by due
+         date."
+
+    A statement notice carries amounts but records no money movement; a
+    naive parser would fabricate a fake transaction out of "Total Due".
+    The anchor "Statement for your Equitas Credit Card ... is generated"
+    is unique to this template.
+    """
+
+    bank = "equitas"
+    email_type = "equitas_cc_statement_notice_stub"
+
+    _PATTERN = re.compile(
+        r"Statement\s+for\s+your\s+Equitas\s+Credit\s+Card\s+\S+\s+is\s+generated",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not self._PATTERN.search(text):
+            raise ParseError("Equitas statement-generated pattern did not match")
+        raise ParserStubError(
+            "equitas_cc_statement_notice_stub: recognized Equitas CC "
+            "statement-generated notice; not a transaction, intentionally "
+            "unimplemented"
+        )
+
+
+class EquitasServiceInfoStubParser(BaseSmsParser):
+    """Recognize-and-skip stub for Equitas service-info SMSes.
+
+    Sample (sender AD-EQUTAS-S) — mobile-app login failure:
+
+        "Dear customer, your attempt to login to Equitas Mobile App failed
+         due to incorrect MPIN. If not you, call us at 18001031222 -
+         Equitas SFB"
+
+    Pure service information: no amount, no account, no money movement.
+    Phrasings are collected in ``_SERVICE_INFO_PATTERNS``; add new ones
+    there, and never broaden a pattern to something that could appear in a
+    transaction alert.
+    """
+
+    bank = "equitas"
+    email_type = "equitas_service_info_stub"
+
+    _SERVICE_INFO_PATTERNS: tuple[re.Pattern[str], ...] = (
+        # Mobile-app login failure (incorrect MPIN etc.)
+        re.compile(
+            r"attempt\s+to\s+login\s+to\s+Equitas\s+Mobile\s+App\s+failed",
+            re.IGNORECASE,
+        ),
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        for pattern in self._SERVICE_INFO_PATTERNS:
+            if pattern.search(text):
+                raise ParserStubError(
+                    "equitas_service_info_stub: recognized Equitas "
+                    "service-info SMS (e.g. mobile-app login failure); "
+                    "intentionally not parsed as a transaction"
+                )
+        raise ParseError("Equitas service-info: no recognized service-info phrase")
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     EquitasCcPaymentReceivedParser(),
     EquitasCcTransactionAlertParser(),
+    # ParserStubError stubs LAST so they can never shadow real parsers.
+    EquitasCcPaymentDueStubParser(),
+    EquitasCcStatementNoticeStubParser(),
+    EquitasServiceInfoStubParser(),
 )
 
 

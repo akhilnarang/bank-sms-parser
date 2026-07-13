@@ -1,0 +1,5 @@
+Txn reversal of INR 2499 at SAMPLESHOP IN was successful.
+Card no. XX0000
+02-05-26 19:53:18 IST
+Avl Limit: INR 99,999.99
+Axis Bank

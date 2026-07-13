@@ -74,6 +74,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_time": datetime.time(22, 26, 1),
         "channel": "card",
     }),
+    # Amount-first CC spend variant: "Rs.X spent on HDFC Bank Card x0000 at
+    # MERCHANT on <dt>.Not U?" — lowercase verbs, x-prefixed mask, and the
+    # ".Not U?" trailer glued to the datetime (no space).
+    ("hdfc", "hdfc/cc_spend_amount_first.txt", {
+        "email_type": "hdfc_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("569"),
+        "currency": "INR",
+        "card_mask": "x0000",
+        "counterparty": "RAZ*SampleFood",
+        "transaction_date": datetime.date(2026, 7, 12),
+        "transaction_time": datetime.time(17, 0, 56),
+        "channel": "card",
+    }),
     ("hdfc", "hdfc/cc_refund.txt", {
         "email_type": "hdfc_cc_refund_alert",
         "direction": "credit",
@@ -163,6 +177,18 @@ def _assert_matches(parsed, expected: dict) -> None:
         "currency": "INR",
         "card_mask": "XX0000",
         "transaction_date": datetime.date(2026, 5, 2),
+    }),
+    ("idfc", "idfc/cc_spend.txt", {
+        "email_type": "idfc_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("370.80"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "SAMPLE MERCHANT LTD",
+        "channel": "card",
+        "balance": Decimal("99999.9"),
+        "transaction_date": datetime.date(2026, 7, 5),
+        "transaction_time": datetime.time(11, 54),
     }),
     ("idfc", "idfc/account_spend.txt", {
         "email_type": "idfc_account_transaction_alert",
@@ -512,6 +538,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 1),
     }),
+    # HSBC credit-card payment received: "we have received a payment of
+    # INR ... for credit card ending ####" with a bare-digit card mask and
+    # a DD-MON-YY date. Mirrors the equitas cc_payment convention:
+    # direction=credit, counterparty="Payment received", channel="card".
+    ("hsbc", "hsbc/cc_payment_received.txt", {
+        "email_type": "hsbc_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("15000.00"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "counterparty": "Payment received",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 2),
+    }),
     ("slice", "slice/cc_spend.txt", {
         "email_type": "slice_cc_transaction_alert",
         "direction": "debit",
@@ -570,6 +610,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         "currency": "INR",
         "card_mask": "XX0000",
         "counterparty": "SampleMerchant Store",
+        "balance": Decimal("99999.99"),
+        "transaction_date": datetime.date(2026, 5, 2),
+        "transaction_time": datetime.time(19, 53, 18),
+        "channel": "card",
+    }),
+    # Axis CC transaction reversal — "Txn reversal of INR ... at MERCHANT
+    # was successful." credits the card back; shares the spend shape's
+    # in-body IST stamp and "Avl Limit" line (stored in `balance`).
+    ("axis", "axis/cc_reversal.txt", {
+        "email_type": "axis_cc_reversal_alert",
+        "direction": "credit",
+        "amount": Decimal("2499"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "SAMPLESHOP IN",
         "balance": Decimal("99999.99"),
         "transaction_date": datetime.date(2026, 5, 2),
         "transaction_time": datetime.time(19, 53, 18),
@@ -729,6 +784,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 6, 1),
         "transaction_time": datetime.time(13, 21, 20),
+    }),
+    # HDFC credit-card transaction reversal: same "Transaction Reversed!On"
+    # template as the DC reversal but on the CREDIT card, so it emits the
+    # CC-specific email_type. Money returns to the CC → direction credit.
+    ("hdfc", "hdfc/cc_reversal.txt", {
+        "email_type": "hdfc_cc_reversal_alert",
+        "direction": "credit",
+        "amount": Decimal("2"),
+        "currency": "INR",
+        "card_mask": "xx0000",
+        "counterparty": "PAYZAPP0000000",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 6),
+        "transaction_time": datetime.time(17, 23, 32),
     }),
     # IDFC outward IMPS debit phrased as "a/c ending <digits> ... debited
     # ... and a/c ending <digits> credited (IMPS Ref no ...)". The source
@@ -893,6 +962,9 @@ def test_parses_real_sms(bank, fixture, expected) -> None:
 @pytest.mark.parametrize("bank, fixture", [
     ("onecard", "onecard/negative/limit_update.txt"),
     ("onecard", "onecard/negative/statement_ready.txt"),
+    ("equitas", "equitas/negative/payment_due.txt"),
+    ("equitas", "equitas/negative/statement_generated.txt"),
+    ("equitas", "equitas/negative/mobile_login_failed.txt"),
 ])
 def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:
     body = _read(fixture)
@@ -1022,6 +1094,16 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
     (
         "hdfc",
         "Spent Rs.3000 From HDFC Bank Card x0000",
+    ),
+    # Amount-first spend with a debit-card trailer ("SMS BLOCK DC"): the
+    # amount-first CC pattern requires the "SMS BLOCK CC" trailer as its
+    # credit-card discriminator, so this must not parse as a CC alert (no
+    # amount-first DC template is known yet either).
+    (
+        "hdfc",
+        "Rs.569 spent on HDFC Bank Card x0000 at RAZ*SampleFood on "
+        "2026-07-12:17:00:56.Not U? To Block & Reissue Call "
+        "18002586161/SMS BLOCK DC 0000 to 7308080808",
     ),
     # Equitas service-info SMS that is not a transaction.
     (

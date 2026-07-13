@@ -11,6 +11,7 @@ from bank_sms_parser.parsing import (
     parse_amount,
     parse_date,
     parse_datetime,
+    parse_money,
 )
 
 
@@ -49,6 +50,63 @@ class IdfcCcPaymentReceivedParser(BaseSmsParser):
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
                 transaction_date=parse_date(match.group("date")),
                 card_mask=match.group("card"),
+            ),
+        )
+
+
+class IdfcCcTransactionAlertParser(BaseSmsParser):
+    """IDFC FIRST Bank credit-card spend alert.
+
+    Sample:
+        "Transaction Successful! INR 370.80 spent on your IDFC FIRST Bank
+         Credit Card ending XX0000 at SAMPLE MERCHANT LTD on 05 JUL 2026 at
+         11:54 AM Avbl Limit: INR 99999.9 If not done by you, call 180010888
+         for dispute or to block your card SMS CCBLOCK 0000 to 5676732"
+
+    Anchored on ``spent on your IDFC FIRST Bank Credit Card ending`` so it
+    cannot collide with the bank's account-level shapes (which all anchor on
+    ``A/C``/``A/c`` clauses) or the CC payment-received shape. The merchant
+    is the counterparty, the in-body ``DD MON YYYY at HH:MM AM/PM`` stamp
+    supplies date + time, and the ``Avbl Limit: INR ...`` trailer is surfaced
+    as ``balance``. Amounts carry an ``INR`` prefix, so ``parse_money`` is
+    used. ``channel="card"``; ``direction="debit"``.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_cc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"(?P<amount>INR\s+[\d,]+(?:\.\d+)?)\s+spent\s+on\s+your\s+"
+        r"IDFC\s+FIRST\s+Bank\s+Credit\s+Card\s+ending\s+(?P<card>X+\d+)\s+"
+        r"at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<datetime>\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}\s+at\s+"
+        r"\d{1,2}:\d{2}\s+[AP]M)\s+"
+        r"Avbl\s+Limit\s*:\s*(?P<balance>INR\s+[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC CC spend pattern did not match")
+        txn_dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=parse_money(match.group("amount")),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                counterparty=match.group("merchant").strip(),
+                channel="card",
+                card_mask=match.group("card"),
+                balance=parse_money(match.group("balance")),
             ),
         )
 
@@ -610,6 +668,9 @@ class IdfcAccountCreditAlertParser(BaseSmsParser):
 
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
+    # CC spend: unique "spent on your IDFC FIRST Bank Credit Card ending"
+    # anchor; cannot collide with the A/C-anchored account shapes.
+    IdfcCcTransactionAlertParser(),
     IdfcAccountBalanceDebitAlertParser(),
     IdfcAccountTransactionAlertParser(),
     IdfcAccountRtgsDebitAlertParser(),

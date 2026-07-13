@@ -112,9 +112,68 @@ class AxisCcTransactionAlertParser(BaseSmsParser):
         )
 
 
+class AxisCcReversalAlertParser(BaseSmsParser):
+    """Axis credit-card transaction reversal alert.
+
+    Sample (multi-line in the wire body; whitespace is normalized first):
+        "Txn reversal of INR 2499 at SAMPLESHOP IN was successful.
+         Card no. XX0000
+         02-05-26 19:53:18 IST
+         Avl Limit: INR 99,999.99
+         Axis Bank"
+
+    A reversal credits the amount back to the card, so ``direction`` is
+    ``credit`` and the merchant is the ``counterparty``. Discriminator is
+    the leading "Txn reversal of INR ... was successful." clause; unlike
+    the spend shape, the mask line is a bare "Card no. XX####" (no
+    "Axis Bank" prefix). The "Avl Limit" available credit is stored in
+    ``balance``; ``channel`` is ``card``.
+    """
+
+    bank = "axis"
+    email_type = "axis_cc_reversal_alert"
+
+    _PATTERN = re.compile(
+        r"Txn\s+reversal\s+of\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"at\s+(?P<merchant>.+?)\s+was\s+successful\.\s+"
+        r"Card\s+no\.\s+(?P<card>XX\d+)\s+"
+        r"(?P<datetime>\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+IST\s+"
+        r"Avl\s+Limit:\s+INR\s+(?P<limit>[\d,]+(?:\.\d+)?)"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Axis CC reversal alert pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("merchant").strip(),
+                balance=Money(
+                    amount=parse_amount(match.group("limit")), currency="INR"
+                ),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     AxisCcPaymentReceivedParser(),
     AxisCcTransactionAlertParser(),
+    AxisCcReversalAlertParser(),
 )
 
 
