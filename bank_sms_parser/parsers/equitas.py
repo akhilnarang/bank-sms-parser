@@ -17,23 +17,14 @@ from bank_sms_parser.parsing import (
 class EquitasCcPaymentReceivedParser(BaseSmsParser):
     """Equitas credit-card bill-payment-received notification.
 
-    Two cosmetic body shapes share this event type:
-
-    variant 1 — "INR ... was received ... credited to your Equitas Credit
-    Card XX####" (``DD/MM/YYYY`` date, masked ``XX####`` card):
+    Sample (``DD/MM/YYYY`` date, masked ``XX####`` card):
         "INR 12,345.00 was received on 05/05/2026 and was credited to
          your Equitas Credit Card XX9999. Equitas SFB"
 
-    variant 2 — "Thank you for the payment of Rs.... towards Equitas
-    Credit Card ####" (``DD/MM/YY`` 2-digit-year date, bare 4-digit card,
-    no reference number):
-        "Thank you for the payment of Rs.12,345.00 towards Equitas Credit
-         Card 0000, this has been credited to your account on 07/06/26.
-         Equitas SFB"
-
-    Both reduce the credit-card outstanding, so ``direction`` is
+    This is the first of the two SMSes Equitas sends per bill payment and
+    the one that carries the event into the ledger: ``direction`` is
     ``credit`` and ``email_type`` stays ``equitas_cc_payment_alert`` for
-    downstream CC-payment reconciliation. Neither template carries a
+    downstream CC-payment reconciliation. The template carries no
     reference number.
     """
 
@@ -47,7 +38,57 @@ class EquitasCcPaymentReceivedParser(BaseSmsParser):
         r"(?P<card>XX\d+)"
     )
 
-    _THANK_YOU = re.compile(
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Equitas CC payment-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty="Payment received",
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
+class EquitasCcPaymentConfirmationParser(BaseSmsParser):
+    """Equitas credit-card bill-payment confirmation notification.
+
+    Sample (``DD/MM/YY`` 2-digit-year date, bare 4-digit card, no
+    reference number):
+        "Thank you for the payment of Rs.12,345.00 towards Equitas Credit
+         Card 0000, this has been credited to your account on 07/06/26.
+         Equitas SFB"
+
+    Equitas sends this a few hours to a day after the
+    ``equitas_cc_payment_alert`` SMS for the *same* payment; it restates a
+    credit that has already been recorded rather than describing a second
+    movement of money. It is given its own ``email_type`` so downstream
+    consumers can recognize the restatement and decline to open a ledger
+    row for it. Sender ID cannot be used to tell the two templates apart —
+    the same sender IDs carry spend alerts and statement notices too — so
+    the body wording is the only reliable discriminator.
+
+    ``direction`` is still ``credit`` and the parsed fields are still
+    populated: the event is real, only the second telling of it is
+    redundant.
+    """
+
+    bank = "equitas"
+    email_type = "equitas_cc_payment_confirmation_alert"
+
+    _PATTERN = re.compile(
         r"Thank\s+you\s+for\s+the\s+payment\s+of\s+"
         r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"towards\s+Equitas\s+Credit\s+Card\s+(?P<card>\d+),?\s+"
@@ -63,13 +104,8 @@ class EquitasCcPaymentReceivedParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if match := self._PATTERN.search(text):
-            return self._build(match)
-        if match := self._THANK_YOU.search(text):
-            return self._build(match)
-        raise ParseError("Equitas CC payment-received pattern did not match")
-
-    def _build(self, match: re.Match[str]) -> ParsedSms:
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Equitas CC payment-confirmation pattern did not match")
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
@@ -261,6 +297,7 @@ class EquitasServiceInfoStubParser(BaseSmsParser):
 
 _PARSERS: tuple[BaseSmsParser, ...] = (
     EquitasCcPaymentReceivedParser(),
+    EquitasCcPaymentConfirmationParser(),
     EquitasCcTransactionAlertParser(),
     # ParserStubError stubs LAST so they can never shadow real parsers.
     EquitasCcPaymentDueStubParser(),

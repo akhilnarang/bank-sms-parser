@@ -39,13 +39,14 @@ def test_parses_equitas_cc_payment_received() -> None:
     assert txn.balance is None
 
 
-def test_parses_equitas_cc_payment_received_thank_you_variant() -> None:
+def test_parses_equitas_cc_payment_confirmation_variant() -> None:
     """The "Thank you for the payment of Rs.X towards Equitas Credit
     Card ####" variant (DD/MM/YY date, bare 4-digit card, no reference)
-    parses to the same equitas_cc_payment_alert credit event."""
+    parses to its own equitas_cc_payment_confirmation_alert event, keeping
+    it distinguishable from the payment SMS that precedes it."""
     body = _read("equitas/cc_payment_received_thank_you.txt")
     result = parse_sms("equitas", body)
-    assert result.email_type == "equitas_cc_payment_alert"
+    assert result.email_type == "equitas_cc_payment_confirmation_alert"
     assert result.bank == "equitas"
     txn = result.transaction
     assert txn is not None
@@ -186,8 +187,44 @@ class TestEquitasStubs:
             ("equitas/cc_payment_received.txt", "equitas_cc_payment_alert"),
             (
                 "equitas/cc_payment_received_thank_you.txt",
-                "equitas_cc_payment_alert",
+                "equitas_cc_payment_confirmation_alert",
             ),
         ):
             result = parse_sms("equitas", _read(fixture))
             assert result.email_type == email_type
+
+
+def test_payment_and_confirmation_shapes_are_mutually_exclusive() -> None:
+    """The two payment templates must never both match one body: the
+    email_type is the only signal separating the ledger-bearing SMS from
+    the restatement that follows it, so an overlap would let the pair be
+    double-counted (or both dropped)."""
+    from bank_sms_parser.parsers.equitas import (
+        EquitasCcPaymentConfirmationParser,
+        EquitasCcPaymentReceivedParser,
+    )
+
+    received = EquitasCcPaymentReceivedParser()
+    confirmation = EquitasCcPaymentConfirmationParser()
+
+    payment_body = _read("equitas/cc_payment_received.txt")
+    confirmation_body = _read("equitas/cc_payment_received_thank_you.txt")
+
+    assert received.parse(payment_body).email_type == "equitas_cc_payment_alert"
+    with pytest.raises(ParseError):
+        confirmation.parse(payment_body)
+
+    assert (
+        confirmation.parse(confirmation_body).email_type
+        == "equitas_cc_payment_confirmation_alert"
+    )
+    with pytest.raises(ParseError):
+        received.parse(confirmation_body)
+
+
+def test_confirmation_parser_rejects_spend_alert() -> None:
+    """The confirmation shape must not swallow a spend alert."""
+    from bank_sms_parser.parsers.equitas import EquitasCcPaymentConfirmationParser
+
+    with pytest.raises(ParseError):
+        EquitasCcPaymentConfirmationParser().parse(_read("equitas/cc_spend.txt"))
