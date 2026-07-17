@@ -24,6 +24,8 @@ def test_parses_equitas_cc_payment_received() -> None:
     result = parse_sms("equitas", body)
     assert result.email_type == "equitas_cc_payment_alert"
     assert result.bank == "equitas"
+    # The ledger-bearing message of the pair.
+    assert result.ledger_role == "primary"
     txn = result.transaction
     assert txn is not None
     assert txn.direction == "credit"
@@ -48,6 +50,8 @@ def test_parses_equitas_cc_payment_confirmation_variant() -> None:
     result = parse_sms("equitas", body)
     assert result.email_type == "equitas_cc_payment_confirmation_alert"
     assert result.bank == "equitas"
+    # The redundant restatement, distinct from the primary above.
+    assert result.ledger_role == "restatement"
     txn = result.transaction
     assert txn is not None
     assert txn.direction == "credit"

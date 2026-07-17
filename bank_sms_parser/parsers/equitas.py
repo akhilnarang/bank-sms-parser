@@ -109,6 +109,7 @@ class EquitasCcPaymentConfirmationParser(BaseSmsParser):
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
+            ledger_role="restatement",
             transaction=SmsTransactionAlert(
                 direction="credit",
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),

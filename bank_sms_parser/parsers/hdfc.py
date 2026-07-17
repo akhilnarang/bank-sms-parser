@@ -19,6 +19,7 @@ Supported SMS types:
 
 import datetime
 import re
+from typing import Literal
 
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
@@ -402,7 +403,7 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
 class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
     """HDFC credit-card bill-payment-received credit alert.
 
-    Two cosmetic body shapes share this event type:
+    Three cosmetic body shapes share this event type:
 
     variant 1 — mixed-case "Online Payment ... vide Ref# ..." template:
         "HDFC Bank Cardmember, Online Payment of Rs.100 vide
@@ -462,18 +463,30 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
+        # The ledger role is a property of the template, decided here where the
+        # template is known -- not inferred later from whether a reference
+        # survived. The reference-bearing "Online Payment ... vide Ref#" is the
+        # settlement (the ledger event); the two no-reference shapes are the
+        # provisional "received" notice, whose settlement arrives separately.
         if match := self._MIXED_CASE.search(text):
-            return self._build(match, ref=match.group("ref"))
+            return self._build(match, ref=match.group("ref"), role="primary")
         if match := self._NO_REF.search(text):
-            return self._build(match, ref=None)
+            return self._build(match, ref=None, role="provisional")
         if match := self._UPPERCASE.search(text):
-            return self._build(match, ref=None)
+            return self._build(match, ref=None, role="provisional")
         raise ParseError("HDFC CC payment-received pattern did not match")
 
-    def _build(self, match: re.Match[str], *, ref: str | None) -> ParsedSms:
+    def _build(
+        self,
+        match: re.Match[str],
+        *,
+        ref: str | None,
+        role: Literal["primary", "provisional", "restatement"],
+    ) -> ParsedSms:
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
+            ledger_role=role,
             transaction=SmsTransactionAlert(
                 direction="credit",
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),

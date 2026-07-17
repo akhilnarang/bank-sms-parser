@@ -1127,3 +1127,28 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
 def test_synthetic_adversarial_bodies_raise_parse_error(bank, body) -> None:
     with pytest.raises(ParseError):
         parse_sms(bank, body)
+
+
+def test_hdfc_cc_payment_ledger_roles_by_template() -> None:
+    """The ref-bearing settlement carries the ledger event; both no-ref
+    "received" shapes are provisional pre-announcements of it. The role is
+    assigned per template, not inferred from ref-presence at the consumer."""
+    settlement = (
+        "HDFC Bank Cardmember, Online Payment of Rs.100 vide Ref# 000ABCDE "
+        "was credited to your card ending 0000 On 08/MAY/2026"
+    )
+    provisional_upper = (
+        "DEAR HDFCBANK CARDMEMBER, PAYMENT OF Rs. 100.00 RECEIVED TOWARDS "
+        "YOUR CREDIT CARD ENDING WITH 0000 ON 17-5-2026. YOUR AVAILABLE "
+        "LIMIT IS RS. 200.00"
+    )
+    provisional_noref = (
+        "HDFC Bank Cardmember, Payment of Rs.100 was credited to your card "
+        "ending 0000 On 08/MAY/2026"
+    )
+    assert parse_sms("hdfc", settlement).ledger_role == "primary"
+    assert parse_sms("hdfc", provisional_upper).ledger_role == "provisional"
+    assert parse_sms("hdfc", provisional_noref).ledger_role == "provisional"
+    # All three share one email_type; the ref rides on the settlement only.
+    assert parse_sms("hdfc", settlement).transaction.reference_number == "000ABCDE"
+    assert parse_sms("hdfc", provisional_noref).transaction.reference_number is None
