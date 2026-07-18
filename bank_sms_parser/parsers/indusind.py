@@ -405,6 +405,58 @@ class IndusindAccountCreditAlertParser(BaseSmsParser):
         )
 
 
+class IndusindCcPaymentReceivedAlertParser(BaseSmsParser):
+    """IndusInd credit-card payment-received notification.
+
+    Sample:
+        "Dear Customer, thank you for your Payment of INR 1,234.56
+         towards your IndusInd Bank Credit Card on 18/07/2026
+         - IndusInd Bank"
+
+    This is IndusInd's completed payment receipt and is therefore a primary
+    credit that reduces card debt. The template omits the card mask, so account
+    resolution is left to the consumer. ``counterparty="Payment received"``
+    matches the sibling email parser and lets cross-channel deduplication pair
+    the two alerts. Requiring the full thank-you, payment,
+    card-product, date, and bank-signature frame rejects statement reminders.
+    """
+
+    bank = "indusind"
+    email_type = "indusind_cc_payment_received_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+thank\s+you\s+for\s+your\s+Payment\s+of\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+towards\s+your\s+IndusInd\s+Bank\s+"
+        r"Credit\s+Card\s+on\s+(?P<date>\d{1,2}/\d{1,2}/\d{4})\s+"
+        r"-\s*IndusInd\s+Bank\.?$",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IndusInd CC payment-received pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty="Payment received",
+                channel="card",
+            ),
+        )
+
+
 class IndusindCcSpendAlertParser(BaseSmsParser):
     """IndusInd credit-card spend alert.
 
@@ -469,6 +521,7 @@ class IndusindCcSpendAlertParser(BaseSmsParser):
 # handles the IMPS debit shape (and remains a safety net for the historic
 # UPI ``from``-only regex).
 _PARSERS: tuple[BaseSmsParser, ...] = (
+    IndusindCcPaymentReceivedAlertParser(),
     IndusindCcSpendAlertParser(),
     IndusindAccountUpiCreditAlertParser(),
     IndusindAccountUpiDebitAlertParser(),

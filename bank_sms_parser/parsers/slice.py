@@ -1,6 +1,6 @@
 """slice (the fintech) SMS parsers.
 
-Three SMS shapes supported:
+Supported SMS shapes:
 
 1. ``slice_cc_bill_paid_alert`` — credit-card bill paid via autopay. The
    body carries no mask and no date; ``received_at`` (UTC→IST) fills the
@@ -18,6 +18,11 @@ Three SMS shapes supported:
 5. ``slice_account_imps_credit_alert`` — IMPS credit into the slice
    savings account. Carries amount, account mask, payer name, an IMPS
    reference (``Ref ID:``), and an available balance.
+6. ``slice_account_rtgs_credit_alert`` — RTGS credit into the slice
+   savings account, with the same core fields and an alphanumeric RTGS
+   reference.
+7. ``slice_cc_repayment_received_alert`` — manual card repayment.
+8. ``slice_cc_refund_alert`` — merchant refund to the card.
 """
 
 import datetime
@@ -139,6 +144,61 @@ class SliceCcRepaymentReceivedAlertParser(BaseSmsParser):
                 transaction_date=txn_date,
                 counterparty="Bill repayment",
                 channel="card",
+            ),
+        )
+
+
+class SliceAccountRtgsCreditAlertParser(BaseSmsParser):
+    """slice savings-account RTGS credit alert.
+
+    Sample:
+        "Rs. 12,345 has been credited to your A/c xx0000 from CUSTOMER
+         NAME on 18-Jul-26 via RTGS (Ref ID: SAMPLE00000000000000000)
+         Avl. Bal: Rs. 23,456.78 - slice"
+
+    The completed ``has been credited`` frame distinguishes this from RTGS
+    initiation or beneficiary-confirmation notices. The body carries all
+    ledger fields, including the alphanumeric bank reference and balance.
+    """
+
+    bank = "slice"
+    email_type = "slice_account_rtgs_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+has\s+been\s+credited\s+"
+        r"to\s+your\s+A/c\s+(?P<account>xx\d+)\s+from\s+"
+        r"(?P<sender_name>.+?)\s+on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
+        r"via\s+RTGS\s+\(Ref\s*ID:\s*(?P<ref>[A-Z0-9]+)\)\s+"
+        r"Avl\.?\s*Bal:\s*Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)\s+-\s*slice$",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice account RTGS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("sender_name").strip(),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="rtgs",
             ),
         )
 
@@ -468,6 +528,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceCcRepaymentReceivedAlertParser(),
     SliceCcTransactionAlertParser(),
     SliceCcRefundAlertParser(),
+    SliceAccountRtgsCreditAlertParser(),
     SliceAccountUpiCreditAlertParser(),
     SliceAccountImpsCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),

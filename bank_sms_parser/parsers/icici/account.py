@@ -335,3 +335,48 @@ class IciciAccountCreditInfoAlertParser(BaseSmsParser):
                 ),
             ),
         )
+
+
+class IciciAccountMandateDebitAlertParser(BaseSmsParser):
+    """ICICI recurring-mandate execution debit.
+
+    A successfully redeemed mandate is the completed money movement, not a
+    mandate-registration or reminder message. The template carries the debit
+    amount, merchant, execution date, and RRN, but omits the account mask.
+    Requiring the complete ``raised by ... successfully redeemed through RRN``
+    frame prevents generic mandate notices from being treated as transactions.
+    """
+
+    bank = "icici"
+    email_type = "icici_account_mandate_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+the\s+mandate\s+of\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+raised\s+by\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+and\s+is\s+successfully\s+"
+        r"redeemed\s+through\s+RRN\s+(?P<ref>\d+)\s+-ICICI\s+Bank\.?$",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account mandate-debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("merchant").strip(),
+                reference_number=match.group("ref"),
+                channel="emandate",
+            ),
+        )

@@ -293,6 +293,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_time": datetime.time(19, 58, 13),
         "channel": "card",
     }),
+    ("indusind", "indusind/cc_payment_received.txt", {
+        "email_type": "indusind_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("1234.56"),
+        "currency": "INR",
+        "card_mask": None,
+        "counterparty": "Payment received",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 18),
+    }),
     # IndusInd generic account inbound credit (a refund). The "Ref-"
     # clause is descriptive narration (the refund source), stored as
     # counterparty; reference_number stays None so a descriptive string
@@ -353,6 +363,17 @@ def _assert_matches(parsed, expected: dict) -> None:
         "reference_number": "000000000000",
         "channel": "upi",
         "transaction_date": datetime.date(2026, 5, 28),
+    }),
+    ("icici", "icici/account_mandate_debit.txt", {
+        "email_type": "icici_account_mandate_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("1234.56"),
+        "currency": "INR",
+        "account_mask": None,
+        "counterparty": "SAMPLE FUND MANAGER",
+        "reference_number": "000000000000",
+        "channel": "emandate",
+        "transaction_date": datetime.date(2026, 7, 18),
     }),
     ("icici", "icici/cc_spend.txt", {
         "email_type": "icici_cc_transaction_alert",
@@ -599,6 +620,18 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "imps",
         "balance": Decimal("123456.78"),
         "transaction_date": datetime.date(2026, 6, 11),
+    }),
+    ("slice", "slice/account_rtgs_credit.txt", {
+        "email_type": "slice_account_rtgs_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("12345"),
+        "currency": "INR",
+        "account_mask": "xx0000",
+        "counterparty": "CUSTOMER NAME",
+        "reference_number": "SAMPLE00000000000000000",
+        "channel": "rtgs",
+        "balance": Decimal("23456.78"),
+        "transaction_date": datetime.date(2026, 7, 18),
     }),
     # Axis CC POS/online spend (distinct from the payment-received credit):
     # in-body "DD-MM-YY HH:MM:SS IST" stamp; the "Avl Limit" credit limit
@@ -959,6 +992,15 @@ def test_parses_real_sms(bank, fixture, expected) -> None:
     _assert_matches(result, expected)
 
 
+def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:
+    body = _read("indusind/cc_payment_received.txt").rstrip() + "."
+    result = parse_sms("indusind", body)
+    assert result.email_type == "indusind_cc_payment_received_alert"
+    assert result.ledger_role == "primary"
+    assert result.transaction is not None
+    assert result.transaction.direction == "credit"
+
+
 @pytest.mark.parametrize("bank, fixture", [
     ("onecard", "onecard/negative/limit_update.txt"),
     ("onecard", "onecard/negative/statement_ready.txt"),
@@ -1123,6 +1165,26 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
         "hsbc",
         "HSBC creditcard xxxxx0000 OTP for INR 100.00 is 123456. Do not share.",
     ),
+    # A generic ICICI mandate notice is not an executed debit; only the full
+    # "successfully redeemed through RRN" template is transactional.
+    (
+        "icici",
+        "Dear Customer, your account has been unblocked by INR 1,234.56 "
+        "against a UPI one-time mandate - ICICI Bank.",
+    ),
+    # IndusInd statement reminders mention payments and amounts but are not
+    # payment-received events.
+    (
+        "indusind",
+        "Statement Alert: Amount Due on your IndusInd Bank Credit Card is "
+        "INR 1,234.56. Payment to be made by 18/08/26.",
+    ),
+    # A truncated slice RTGS credit without its mandatory balance must fail.
+    (
+        "slice",
+        "Rs. 12,345 has been credited to your A/c xx0000 from CUSTOMER NAME "
+        "on 18-Jul-26 via RTGS (Ref ID: SAMPLE00000000000000000)",
+    ),
 ])
 def test_synthetic_adversarial_bodies_raise_parse_error(bank, body) -> None:
     with pytest.raises(ParseError):
@@ -1146,9 +1208,14 @@ def test_hdfc_cc_payment_ledger_roles_by_template() -> None:
         "HDFC Bank Cardmember, Payment of Rs.100 was credited to your card "
         "ending 0000 On 08/MAY/2026"
     )
-    assert parse_sms("hdfc", settlement).ledger_role == "primary"
-    assert parse_sms("hdfc", provisional_upper).ledger_role == "provisional"
-    assert parse_sms("hdfc", provisional_noref).ledger_role == "provisional"
+    parsed_settlement = parse_sms("hdfc", settlement)
+    parsed_upper = parse_sms("hdfc", provisional_upper)
+    parsed_noref = parse_sms("hdfc", provisional_noref)
+    assert parsed_settlement.ledger_role == "primary"
+    assert parsed_upper.ledger_role == "provisional"
+    assert parsed_noref.ledger_role == "provisional"
     # All three share one email_type; the ref rides on the settlement only.
-    assert parse_sms("hdfc", settlement).transaction.reference_number == "000ABCDE"
-    assert parse_sms("hdfc", provisional_noref).transaction.reference_number is None
+    assert parsed_settlement.transaction is not None
+    assert parsed_noref.transaction is not None
+    assert parsed_settlement.transaction.reference_number == "000ABCDE"
+    assert parsed_noref.transaction.reference_number is None
