@@ -573,6 +573,28 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 2),
     }),
+    # SBI Card spend alerts from SMS 889/890 share one shape: amount first,
+    # a bare last-four mask, merchant, and DD/MM/YY date.
+    ("sbi", "sbi/cc_spend_889.txt", {
+        "email_type": "sbi_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("123.45"),
+        "currency": "INR",
+        "card_mask": "0000",
+        "counterparty": "SAMPLE MART",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 19),
+    }),
+    ("sbi", "sbi/cc_spend_890.txt", {
+        "email_type": "sbi_cc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("678.90"),
+        "currency": "INR",
+        "card_mask": "0001",
+        "counterparty": "SAMPLE STORE",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 20),
+    }),
     ("slice", "slice/cc_spend.txt", {
         "email_type": "slice_cc_transaction_alert",
         "direction": "debit",
@@ -1164,6 +1186,19 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
     (
         "hsbc",
         "HSBC creditcard xxxxx0000 OTP for INR 100.00 is 123456. Do not share.",
+    ),
+    # SBI OTP has the same amount and bare card mask but no canonical
+    # "spent on your SBI Credit Card" transaction clause.
+    (
+        "sbi",
+        "OTP 123456 is for Rs.100.00 on your SBI Credit Card ending 0000. "
+        "Do not share it with anyone.",
+    ),
+    # The fraud-reporting trailer is the SBI shape's truncation guard.
+    (
+        "sbi",
+        "Rs.100.00 spent on your SBI Credit Card ending 0000 at SAMPLE MART "
+        "on 19/07/26.",
     ),
     # A generic ICICI mandate notice is not an executed debit; only the full
     # "successfully redeemed through RRN" template is transactional.
