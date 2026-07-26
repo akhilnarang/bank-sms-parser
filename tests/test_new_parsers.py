@@ -826,6 +826,30 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": datetime.date(2026, 5, 29),
         "transaction_time": datetime.time(17, 55, 25, 123456),
     }),
+    # Jupiter Edge CC payment messages do not contain a date or card mask.
+    # A separate test checks the received_at value.
+    ("jupiter", "jupiter/cc_payment_received_963.txt", {
+        "email_type": "jupiter_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("123.45"),
+        "currency": "INR",
+        "card_mask": None,
+        "counterparty": "Payment received",
+        "channel": "card",
+        "transaction_date": None,
+        "transaction_time": None,
+    }),
+    ("jupiter", "jupiter/cc_payment_received_964.txt", {
+        "email_type": "jupiter_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("678.90"),
+        "currency": "INR",
+        "card_mask": None,
+        "counterparty": "Payment received",
+        "channel": "card",
+        "transaction_date": None,
+        "transaction_time": None,
+    }),
     # HDFC debit-card transaction reversal: money returned to the DC, so
     # direction is credit. "By PAYZAPP0000000" is the reversing
     # merchant/acquirer; the colon-separated datetime is the reversal time.
@@ -1014,6 +1038,16 @@ def test_parses_real_sms(bank, fixture, expected) -> None:
     _assert_matches(result, expected)
 
 
+def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
+    body = _read("jupiter/cc_payment_received_963.txt")
+    # 21:45 UTC on 2026-07-26 is 03:15 IST on 2026-07-27.
+    received = datetime.datetime(2026, 7, 26, 21, 45, tzinfo=datetime.UTC)
+    result = parse_sms("jupiter", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 7, 27)
+    assert result.transaction.transaction_time == datetime.time(3, 15)
+
+
 def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:
     body = _read("indusind/cc_payment_received.txt").rstrip() + "."
     result = parse_sms("indusind", body)
@@ -1186,6 +1220,18 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
     (
         "hsbc",
         "HSBC creditcard xxxxx0000 OTP for INR 100.00 is 123456. Do not share.",
+    ),
+    # The parser must reject Jupiter payment OTP and pending notices.
+    (
+        "jupiter",
+        "OTP 123456 is for your payment of Rs 100.00 for your Edge CSB Bank "
+        "RuPay Credit Card. Do not share it.",
+    ),
+    # The parser requires the success text and the Jupiter app text.
+    # These text items reject an incomplete payment message.
+    (
+        "jupiter",
+        "Your payment of Rs 100.00 for your Edge CSB Bank RuPay Credit Card",
     ),
     # SBI OTP has the same amount and bare card mask but no canonical
     # "spent on your SBI Credit Card" transaction clause.
