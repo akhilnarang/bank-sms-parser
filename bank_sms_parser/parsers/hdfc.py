@@ -14,6 +14,7 @@ Supported SMS types:
 - hdfc_account_upi_credit_alert: Savings account UPI credit
 - hdfc_cc_smartpay_bbps_alert: SmartPay BBPS bill auto-debit on CC
 - hdfc_account_transfer_debit_alert: Savings-to-PPF/SSY transfer debit
+- hdfc_account_neft_debit_alert: Savings account outward NEFT debit
 - hdfc_account_rtgs_debit_alert: Savings account outward RTGS debit ("RTGS txn initiated")
 """
 
@@ -970,6 +971,65 @@ class HdfcAccountTransferDebitAlertParser(BaseSmsParser):
         )
 
 
+class HdfcAccountNeftDebitAlertParser(BaseSmsParser):
+    """Parse an HDFC online banking NEFT debit.
+
+    Example:
+        "Amt Deducted! Rs.12345.67 from your HDFC Bank A/c XX0000 for
+         NEFT txn via HDFC Bank Online Banking Not you?Call 00000000000/
+         SMS BLOCK OB to 0000000000"
+
+    The message does not contain a beneficiary, reference number, balance,
+    or transaction time. If ``received_at`` is available, convert it from UTC
+    to IST. Use the result for the transaction date and time.
+
+    The parser requires the fraud report text. This text prevents a match
+    with an OTP or an incomplete message.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_neft_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Amt\s+Deducted!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"from\s+your\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
+        r"for\s+NEFT\s+txn\s+via\s+HDFC\s+Bank\s+Online\s+Banking\s+"
+        r"Not\s+you\?\s*Call\s+\d+/SMS\s+BLOCK\s+OB\s+to\s+\d+\s*$",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("HDFC account NEFT debit pattern did not match")
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                account_mask=match.group("account"),
+                channel="neft",
+            ),
+        )
+
+
 class HdfcAccountRtgsInitiatedDebitAlertParser(BaseSmsParser):
     """HDFC savings/current-account outward RTGS debit alert ("initiated").
 
@@ -1060,6 +1120,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountImpsOutwardAlertParser(),
     HdfcAccountUpiDebitAlertParser(),
     HdfcAccountTransferDebitAlertParser(),
+    HdfcAccountNeftDebitAlertParser(),
     # RTGS "txn initiated" outward debit: unique "RTGS txn initiated:"
     # anchor, so ordering vs the other account shapes is not load-bearing.
     HdfcAccountRtgsInitiatedDebitAlertParser(),

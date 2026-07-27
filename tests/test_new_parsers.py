@@ -1017,6 +1017,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "neft",
         "transaction_date": None,
     }),
+    # The HDFC NEFT debit message does not contain a beneficiary, reference,
+    # balance, or date.
+    ("hdfc", "hdfc/account_neft_debit.txt", {
+        "email_type": "hdfc_account_neft_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.67"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": None,
+        "reference_number": None,
+        "channel": "neft",
+        "transaction_date": None,
+        "transaction_time": None,
+    }),
     # HDFC RTGS "txn initiated" outward debit. This "initiated" leg is the
     # only one parsed; the separate "RTGS Money Deposited~..." confirmation
     # is left unparsed. No payee, no reference, no balance, no in-body date.
@@ -1068,6 +1082,16 @@ def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:
     body = _read(fixture)
     with pytest.raises(ParseError):
         parse_sms(bank, body)
+
+
+def test_hdfc_neft_debit_uses_received_at_for_datetime() -> None:
+    body = _read("hdfc/account_neft_debit.txt")
+    # 19:33 UTC on 2026-07-26 is 01:03 IST on 2026-07-27.
+    received = datetime.datetime(2026, 7, 26, 19, 33, tzinfo=datetime.UTC)
+    result = parse_sms("hdfc", body, received_at=received)
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 7, 27)
+    assert result.transaction.transaction_time == datetime.time(1, 3)
 
 
 def test_hdfc_rtgs_initiated_omits_balance_and_reference() -> None:
@@ -1202,6 +1226,13 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
         "Rs.569 spent on HDFC Bank Card x0000 at RAZ*SampleFood on "
         "2026-07-12:17:00:56.Not U? To Block & Reissue Call "
         "18002586161/SMS BLOCK DC 0000 to 7308080808",
+    ),
+    # The parser requires the fraud report text in an HDFC NEFT debit.
+    # This incomplete message must not match.
+    (
+        "hdfc",
+        "Amt Deducted! Rs.100.00 from your HDFC Bank A/c XX0000 for NEFT "
+        "txn via HDFC Bank Online Banking",
     ),
     # Equitas service-info SMS that is not a transaction.
     (
