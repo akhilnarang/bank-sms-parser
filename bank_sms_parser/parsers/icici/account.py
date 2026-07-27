@@ -11,10 +11,11 @@ from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_da
 
 
 class _InfoFields(NamedTuple):
-    """Channel and reference extracted from an ICICI ``Info`` descriptor."""
+    """Fields extracted from an ICICI ``Info`` descriptor."""
 
     channel: str | None
     reference_number: str | None
+    counterparty: str | None
 
 
 # Maps a rail token found in an ``Info`` descriptor to a channel slug. The
@@ -35,15 +36,21 @@ _INFO_CHANNELS = {
 # dispute/BLOCK numbers as a reference.
 _REF_TOKEN = re.compile(r"\b(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6,}\b")
 
+# An NEFT descriptor contains the rail, reference, and sender name.
+_NEFT_INFO = re.compile(
+    r"^NEFT-(?P<ref>(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6,})-"
+    r"(?P<counterparty>.+)$",
+    re.IGNORECASE,
+)
+
 
 def _classify_info(descriptor: str) -> _InfoFields:
-    """Split an ICICI ``Info`` descriptor into (channel, reference_number).
+    """Extract the channel, reference, and counterparty from ``Info`` text.
 
-    ``channel`` comes from the descriptor's rail token when recognized
-    (RTGS/NEFT/IMPS/INFT/UPI), else ``None``. ``reference_number`` is the
-    first clear alphanumeric ref token, else ``None`` — descriptors like
-    ``TRF TO FD no.`` carry no ref and must stay ``None`` rather than
-    misreport a boilerplate word.
+    The channel comes from a known rail token. The reference is the first
+    clear alphanumeric reference token. For ``NEFT-<reference>-<sender>``
+    text, the sender is the counterparty. For other formats, the full
+    descriptor is the counterparty.
     """
     segments = re.split(r"[\s*\-]", descriptor.strip())
     channel: str | None = None
@@ -53,7 +60,15 @@ def _classify_info(descriptor: str) -> _InfoFields:
             break
     ref_match = _REF_TOKEN.search(descriptor)
     reference_number = ref_match.group(0) if ref_match else None
-    return _InfoFields(channel=channel, reference_number=reference_number)
+    counterparty = descriptor.strip() or None
+    if neft_match := _NEFT_INFO.fullmatch(descriptor.strip()):
+        reference_number = neft_match.group("ref")
+        counterparty = neft_match.group("counterparty").strip()
+    return _InfoFields(
+        channel=channel,
+        reference_number=reference_number,
+        counterparty=counterparty,
+    )
 
 
 class IciciAccountTransactionAlertParser(BaseSmsParser):
@@ -233,10 +248,9 @@ class IciciAccountDebitInfoAlertParser(BaseSmsParser):
     - the narration sits in an ``Info<descriptor>`` clause terminated by
       ``.Avl Bal Rs. <balance>``.
 
-    The descriptor is surfaced as ``counterparty``; ``_classify_info`` lifts
-    the rail (channel) and a clear reference token out of it. The trailing
-    ``.To dispute call...`` boilerplate is anchored out so it can never leak
-    into counterparty/reference.
+    ``_classify_info`` extracts the counterparty, channel, and reference. The
+    pattern stops before the dispute text. Thus, the dispute text cannot be
+    part of these fields.
     """
 
     bank = "icici"
@@ -268,7 +282,7 @@ class IciciAccountDebitInfoAlertParser(BaseSmsParser):
                 direction="debit",
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
                 transaction_date=parse_date(match.group("date")),
-                counterparty=descriptor or None,
+                counterparty=info.counterparty,
                 reference_number=info.reference_number,
                 channel=info.channel,
                 account_mask=match.group("account"),
@@ -292,8 +306,9 @@ class IciciAccountCreditInfoAlertParser(BaseSmsParser):
     - the narration sits in an ``Info <descriptor>`` clause followed by
       ``Available Balance is Rs. <balance>``.
 
-    The descriptor is surfaced as ``counterparty``; ``_classify_info`` lifts
-    the rail (channel) and a clear reference token out of it.
+    ``_classify_info`` extracts the counterparty, channel, and reference. For
+    an NEFT descriptor, the counterparty is the sender name after the
+    reference.
     """
 
     bank = "icici"
@@ -326,7 +341,7 @@ class IciciAccountCreditInfoAlertParser(BaseSmsParser):
                 direction="credit",
                 amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
                 transaction_date=parse_date(match.group("date")),
-                counterparty=descriptor or None,
+                counterparty=info.counterparty,
                 reference_number=info.reference_number,
                 channel=info.channel,
                 account_mask=match.group("account"),

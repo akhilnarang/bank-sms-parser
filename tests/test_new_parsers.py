@@ -952,6 +952,19 @@ def _assert_matches(parsed, expected: dict) -> None:
         "balance": Decimal("54321.00"),
         "transaction_date": datetime.date(2026, 6, 11),
     }),
+    # For NEFT text, use the sender name after the reference as counterparty.
+    ("icici", "icici/account_credit_info_neft.txt", {
+        "email_type": "icici_account_credit_info_alert",
+        "direction": "credit",
+        "amount": Decimal("12345.67"),
+        "currency": "INR",
+        "account_mask": "XX000",
+        "counterparty": "CUSTOMER NAME",
+        "reference_number": "HDFCH00000000000",
+        "channel": "neft",
+        "balance": Decimal("23456.78"),
+        "transaction_date": datetime.date(2026, 7, 27),
+    }),
     # Same credit shape with "RTGS-<ref>-" → channel rtgs + ref.
     ("icici", "icici/account_credit_info_rtgs.txt", {
         "email_type": "icici_account_credit_info_alert",
