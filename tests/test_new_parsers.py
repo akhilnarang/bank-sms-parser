@@ -826,6 +826,30 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": datetime.date(2026, 5, 29),
         "transaction_time": datetime.time(17, 55, 25, 123456),
     }),
+    # Kotak debit card spend. The body gives a date and a balance but no
+    # time, so the parser takes the time from received_at.
+    ("kotak", "kotak/dc_spend_990.txt", {
+        "email_type": "kotak_dc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("1234.56"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "SAMPLE MERCHANT",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 16),
+        "transaction_time": None,
+    }),
+    ("kotak", "kotak/dc_spend_991.txt", {
+        "email_type": "kotak_dc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("2500.00"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "TESTCO",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 27),
+        "transaction_time": None,
+    }),
     # Jupiter Edge CC payment messages do not contain a date or card mask.
     # A separate test checks the received_at value.
     ("jupiter", "jupiter/cc_payment_received_963.txt", {
@@ -1344,3 +1368,52 @@ def test_hdfc_cc_payment_ledger_roles_by_template() -> None:
     assert parsed_noref.transaction is not None
     assert parsed_settlement.transaction.reference_number == "000ABCDE"
     assert parsed_noref.transaction.reference_number is None
+
+
+def test_kotak_dc_spend_takes_the_time_from_received_at() -> None:
+    """The body gives a date but no time. The bank sends this SMS at the
+    moment of the transaction, so the time of receipt stands for the time of
+    the event. The body date stays, because the bank states it."""
+    body = (FIXTURES_DIR / "kotak" / "dc_spend_990.txt").read_text()
+    result = parse_sms(
+        "kotak",
+        body,
+        received_at=datetime.datetime(2026, 7, 16, 10, 24, 4, tzinfo=datetime.UTC),
+    )
+    txn = result.transaction
+    assert txn is not None
+    # 10:24:04 UTC is 15:54:04 IST.
+    assert txn.transaction_time == datetime.time(15, 54, 4)
+    assert txn.transaction_date == datetime.date(2026, 7, 16)
+
+
+def test_kotak_dc_spend_keeps_the_balance() -> None:
+    """Two spends of the same amount on one day differ only in the balance.
+    The consumer needs it to tell them apart."""
+    body = (FIXTURES_DIR / "kotak" / "dc_spend_990.txt").read_text()
+    txn = parse_sms("kotak", body).transaction
+    assert txn is not None
+    assert txn.balance is not None
+    assert txn.balance.amount == Decimal("9999.99")
+
+
+def test_kotak_dc_spend_reads_a_merchant_of_several_words() -> None:
+    """A merchant name can contain spaces. The capture must stop at ' on
+    <date>' and not at the first space."""
+    body = (
+        "Rs.100.00 spent via Kotak Debit Card XX0000 at SAMPLE STORE CITY on "
+        "16/07/2026. Avl bal Rs.1.00 Not you?Tap https://kotak.com/KBANKT/Fraud"
+    )
+    txn = parse_sms("kotak", body).transaction
+    assert txn is not None
+    assert txn.counterparty == "SAMPLE STORE CITY"
+
+
+def test_kotak_rejects_a_body_without_the_fraud_text() -> None:
+    """The fraud report text ends the message. Without it the body can be an
+    OTP or a part of a message."""
+    with pytest.raises(ParseError):
+        parse_sms(
+            "kotak",
+            "Rs.100.00 spent via Kotak Debit Card XX0000 at SHOP on 16/07/2026.",
+        )
