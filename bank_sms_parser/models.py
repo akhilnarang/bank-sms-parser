@@ -69,6 +69,23 @@ class ParsedSms(BaseModel):
     value to each result.
     """
 
+    identifies_by: Literal["counterparty", "card_mask", "none"] = "counterparty"
+    """Which field shows which event this message reports, when the
+    counterparty cannot show it.
+
+    - ``counterparty``: the message names a merchant or a payer, and that
+      name shows the event (default).
+    - ``card_mask``: the message reports a payment of your own card bill.
+      The payer is you, so there is no merchant to name. The card mask shows
+      which event this is.
+    - ``none``: the bank sends no field that shows the event. Two payments of
+      the same amount on the same day are thus alike in every field. The
+      consumer must ask a person, or keep both rows.
+
+    The parser only states the fact. Set this value on the parser class. The
+    dispatcher copies the value to each result.
+    """
+
     @model_validator(mode="after")
     def _role_requires_transaction(self) -> ParsedSms:
         if self.ledger_role != "primary" and self.transaction is None:

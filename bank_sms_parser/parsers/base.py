@@ -23,12 +23,17 @@ class BaseSmsParser(ABC):
     Set ``event_time_source`` to ``message_arrival`` only when both of these
     are true: the body has no time, and the bank sends the message at the
     moment of the transaction. Examine real messages before you change it.
-    See ``ParsedSms`` for what the consumer does with the value.
+
+    Set ``identifies_by`` to ``card_mask`` when the message reports a payment
+    of the card bill and gives the card mask. Set it to ``none`` when the
+    bank sends no field that shows which event the message reports. See
+    ``ParsedSms`` for what the consumer does with each value.
     """
 
     bank: str
     email_type: str
     event_time_source: Literal["body", "message_arrival"] = "body"
+    identifies_by: Literal["counterparty", "card_mask", "none"] = "counterparty"
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -36,7 +41,8 @@ class BaseSmsParser(ABC):
         # abstract intermediate. A class that defines only event_time_source
         # must still get a check. Without it, a wrong value goes to the
         # consumer, and the consumer reads that value as "body".
-        if not (cls.__dict__.keys() & {"bank", "email_type", "event_time_source"}):
+        if not (cls.__dict__.keys()
+            & {"bank", "email_type", "event_time_source", "identifies_by"}):
             return
         bank = getattr(cls, "bank", None)
         email_type = getattr(cls, "email_type", None)
@@ -50,6 +56,15 @@ class BaseSmsParser(ABC):
             raise TypeError(
                 f"{cls.__name__} must define 'event_time_source' as "
                 "'body' or 'message_arrival'"
+            )
+        if getattr(cls, "identifies_by", None) not in (
+            "counterparty",
+            "card_mask",
+            "none",
+        ):
+            raise TypeError(
+                f"{cls.__name__} must define 'identifies_by' as "
+                "'counterparty', 'card_mask' or 'none'"
             )
 
     @abstractmethod
@@ -142,6 +157,7 @@ def parse_with_parsers(
             # model. Copy it across so the caller does not need to know which
             # class matched.
             result.event_time_source = parser.event_time_source
+            result.identifies_by = parser.identifies_by
         except (ParseError, ParserStubError) as exc:
             if isinstance(exc, ParserStubError):
                 recognized_stubs.add(parser.email_type)

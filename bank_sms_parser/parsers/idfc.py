@@ -25,6 +25,9 @@ class IdfcCcPaymentReceivedParser(BaseSmsParser):
 
     bank = "idfc"
     email_type = "idfc_cc_payment_received_alert"
+    # You pay your own card bill, so this alert names no merchant. The
+    # card mask shows which payment it reports.
+    identifies_by = "card_mask"
 
     _PATTERN = re.compile(
         r"Thank\s+you\s+for\s+payment\s+of\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"

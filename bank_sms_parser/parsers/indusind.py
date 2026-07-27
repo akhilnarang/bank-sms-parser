@@ -423,6 +423,9 @@ class IndusindCcPaymentReceivedAlertParser(BaseSmsParser):
 
     bank = "indusind"
     email_type = "indusind_cc_payment_received_alert"
+    # This alert names no merchant and gives no card mask. Thus no field
+    # shows which card the payment belongs to.
+    identifies_by = "none"
 
     _PATTERN = re.compile(
         r"Dear\s+Customer,\s+thank\s+you\s+for\s+your\s+Payment\s+of\s+INR\s+"

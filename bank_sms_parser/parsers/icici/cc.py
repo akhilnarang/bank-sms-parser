@@ -89,6 +89,9 @@ class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
 
     bank = "icici"
     email_type = "icici_cc_payment_received_alert"
+    # You pay your own card bill, so this alert names no merchant. The
+    # card mask shows which payment it reports.
+    identifies_by = "card_mask"
 
     _PATTERN = re.compile(
         r"Payment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
