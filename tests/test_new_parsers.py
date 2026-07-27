@@ -1417,3 +1417,19 @@ def test_kotak_rejects_a_body_without_the_fraud_text() -> None:
             "kotak",
             "Rs.100.00 spent via Kotak Debit Card XX0000 at SHOP on 16/07/2026.",
         )
+
+
+def test_kotak_dc_spend_declares_that_the_time_comes_from_arrival() -> None:
+    """The body gives no time, and the bank sends this SMS at the moment of
+    the transaction. The consumer must know that, so it can give the row a
+    smaller window when it looks for the matching message."""
+    from bank_sms_parser.parsers.kotak import KotakDcTransactionAlertParser
+
+    assert KotakDcTransactionAlertParser.event_time_source == "message_arrival"
+    body = (FIXTURES_DIR / "kotak" / "dc_spend_990.txt").read_text()
+    result = parse_sms(
+        "kotak",
+        body,
+        received_at=datetime.datetime(2026, 7, 16, 10, 24, 4, tzinfo=datetime.UTC),
+    )
+    assert result.event_time_source == "message_arrival"

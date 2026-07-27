@@ -44,6 +44,7 @@ class KotakDcTransactionAlertParser(BaseSmsParser):
 
     bank = "kotak"
     email_type = "kotak_dc_transaction_alert"
+    event_time_source = "message_arrival"
 
     _PATTERN = re.compile(
         r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+via\s+"
