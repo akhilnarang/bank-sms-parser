@@ -5,7 +5,7 @@ import re
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from bank_sms_parser.exceptions import ParseError, ParserStubError
 from bank_sms_parser.models import ParsedSms
@@ -14,13 +14,29 @@ _STUB_MARKER = re.compile(r"_stub", re.IGNORECASE)
 
 
 class BaseSmsParser(ABC):
+    """The base class for one SMS shape from one bank.
+
+    A subclass must define ``bank`` and ``email_type``. It can also define
+    ``event_time_source``. ``__init_subclass__`` checks all three values when
+    you define the class, so a wrong value stops the import.
+
+    Set ``event_time_source`` to ``message_arrival`` only when both of these
+    are true: the body has no time, and the bank sends the message at the
+    moment of the transaction. Examine real messages before you change it.
+    See ``ParsedSms`` for what the consumer does with the value.
+    """
+
     bank: str
     email_type: str
+    event_time_source: Literal["body", "message_arrival"] = "body"
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        # Skip classes that don't define either attribute — abstract intermediates.
-        if "bank" not in cls.__dict__ and "email_type" not in cls.__dict__:
+        # Skip a class that defines none of these. Such a class is an
+        # abstract intermediate. A class that defines only event_time_source
+        # must still get a check. Without it, a wrong value goes to the
+        # consumer, and the consumer reads that value as "body".
+        if not (cls.__dict__.keys() & {"bank", "email_type", "event_time_source"}):
             return
         bank = getattr(cls, "bank", None)
         email_type = getattr(cls, "email_type", None)
@@ -29,6 +45,11 @@ class BaseSmsParser(ABC):
         if not isinstance(email_type, str):
             raise TypeError(
                 f"{cls.__name__} must define an 'email_type: str' class attribute"
+            )
+        if getattr(cls, "event_time_source", None) not in ("body", "message_arrival"):
+            raise TypeError(
+                f"{cls.__name__} must define 'event_time_source' as "
+                "'body' or 'message_arrival'"
             )
 
     @abstractmethod
@@ -117,6 +138,10 @@ def parse_with_parsers(
     for parser in parsers:
         try:
             result = parser.parse(body, sender=sender, received_at=received_at)
+            # The class states this fact, but the caller receives only the
+            # model. Copy it across so the caller does not need to know which
+            # class matched.
+            result.event_time_source = parser.event_time_source
         except (ParseError, ParserStubError) as exc:
             if isinstance(exc, ParserStubError):
                 recognized_stubs.add(parser.email_type)
@@ -130,9 +155,7 @@ def parse_with_parsers(
             warnings.warn(
                 f"Parser {parser.email_type} succeeded but earlier parsers "
                 "raised unexpected errors: "
-                + "; ".join(
-                    f"{type(e).__name__}: {e}" for e in unexpected_errors
-                ),
+                + "; ".join(f"{type(e).__name__}: {e}" for e in unexpected_errors),
                 stacklevel=2,
             )
         return result

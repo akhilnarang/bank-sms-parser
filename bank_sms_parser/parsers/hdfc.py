@@ -985,10 +985,16 @@ class HdfcAccountNeftDebitAlertParser(BaseSmsParser):
 
     The parser requires the fraud report text. This text prevents a match
     with an OTP or an incomplete message.
+
+    HDFC sends this SMS at the moment of the transaction. In 59 real pairs,
+    the SMS and the email arrive -5 to +14 seconds apart. Thus
+    ``event_time_source`` is ``message_arrival``, and the consumer must trust
+    the time less than a time that the bank writes.
     """
 
     bank = "hdfc"
     email_type = "hdfc_account_neft_debit_alert"
+    event_time_source = "message_arrival"
 
     _PATTERN = re.compile(
         r"Amt\s+Deducted!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"

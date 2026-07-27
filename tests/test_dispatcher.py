@@ -98,6 +98,7 @@ class _AlwaysUnexpectedParser(BaseSmsParser):
 class TestBaseSmsParserSubclassValidation:
     def test_subclass_must_declare_bank(self) -> None:
         with pytest.raises(TypeError):
+
             class _Bad(BaseSmsParser):  # noqa: F841
                 email_type = "x"
 
@@ -106,6 +107,7 @@ class TestBaseSmsParserSubclassValidation:
 
     def test_subclass_must_declare_email_type(self) -> None:
         with pytest.raises(TypeError):
+
             class _Bad(BaseSmsParser):  # noqa: F841
                 bank = "x"
 
@@ -221,10 +223,96 @@ class TestBankSmsParser:
 
     def test_subclass_must_declare_bank(self) -> None:
         with pytest.raises(TypeError):
+
             class _Bad(BankSmsParser):  # noqa: F841
                 parsers = ()
 
     def test_subclass_must_declare_parsers(self) -> None:
         with pytest.raises(TypeError):
+
             class _Bad(BankSmsParser):  # noqa: F841
                 bank = "test"
+
+
+def test_a_parser_declares_the_default_time_source() -> None:
+    """A parser that says nothing declares that the body states the time."""
+
+    class _QuietParser(BaseSmsParser):
+        bank = "samplebank"
+        email_type = "samplebank_debit_alert"
+
+        def parse(self, body, *, sender=None, received_at=None) -> ParsedSms:
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit", amount=Money(amount=Decimal("1.00"))
+                ),
+            )
+
+    assert _QuietParser.event_time_source == "body"
+    result = parse_with_parsers("samplebank", "x", (_QuietParser(),))
+    assert result.event_time_source == "body"
+
+
+def test_the_dispatcher_copies_the_time_source_to_the_result() -> None:
+    """The caller receives a model and not the class. Thus the dispatcher must
+    copy the declaration to each result."""
+
+    class _ArrivalParser(BaseSmsParser):
+        bank = "samplebank"
+        email_type = "samplebank_transfer_debit_alert"
+        event_time_source = "message_arrival"
+
+        def parse(self, body, *, sender=None, received_at=None) -> ParsedSms:
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit", amount=Money(amount=Decimal("1.00"))
+                ),
+            )
+
+    result = parse_with_parsers("samplebank", "x", (_ArrivalParser(),))
+    assert result.event_time_source == "message_arrival"
+
+
+def test_a_parser_cannot_declare_an_unknown_time_source() -> None:
+    """The base class checks the value when you define the class. A wrong
+    value thus fails at import and not at run time."""
+    with pytest.raises(TypeError, match="event_time_source"):
+
+        class _BadParser(BaseSmsParser):
+            bank = "samplebank"
+            email_type = "samplebank_typo_alert"
+            event_time_source = "arrival"
+
+            def parse(self, body, *, sender=None, received_at=None):
+                raise NotImplementedError  # pragma: no cover
+
+
+def test_the_hdfc_neft_debit_parser_declares_message_arrival() -> None:
+    """This SMS has no time in the body, and HDFC sends it at the moment of
+    the transaction. The consumer needs this fact to trust the time less."""
+    from bank_sms_parser.parsers.hdfc import HdfcAccountNeftDebitAlertParser
+
+    assert HdfcAccountNeftDebitAlertParser.event_time_source == "message_arrival"
+
+
+def test_a_subclass_cannot_escape_the_time_source_check() -> None:
+    """A subclass can inherit bank and email_type and declare only
+    event_time_source. The base class must still check that value. If it does
+    not, a wrong value reaches the consumer, which reads it as "body" and
+    gives the row the wide window."""
+
+    class _Parent(BaseSmsParser):
+        bank = "samplebank"
+        email_type = "samplebank_parent_alert"
+
+        def parse(self, body, *, sender=None, received_at=None) -> ParsedSms:
+            raise NotImplementedError  # pragma: no cover
+
+    with pytest.raises(TypeError, match="event_time_source"):
+
+        class _Child(_Parent):
+            event_time_source = "arrival"

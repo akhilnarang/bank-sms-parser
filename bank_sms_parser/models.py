@@ -53,6 +53,22 @@ class ParsedSms(BaseModel):
     ``transaction.direction == "declined"``) — those are orthogonal axes.
     """
 
+    event_time_source: Literal["body", "message_arrival"] = "body"
+    """Where the time of the event comes from, not a policy for it.
+
+    - ``body``: the bank writes the time in the message, or the message has
+      no time that you can use (default; almost every parser).
+    - ``message_arrival``: the body has no time, and this bank sends the
+      message at the moment of the transaction. The consumer can thus use
+      the time at which the phone receives the message in place of the time
+      of the event.
+
+    A consumer decides what to do with ``message_arrival``. It must trust
+    such a time less than a time that the bank writes. The parser only states
+    the fact. Set this value on the parser class. The dispatcher copies the
+    value to each result.
+    """
+
     @model_validator(mode="after")
     def _role_requires_transaction(self) -> ParsedSms:
         if self.ledger_role != "primary" and self.transaction is None:
