@@ -63,7 +63,58 @@ class SbiCcTransactionAlertParser(BaseSmsParser):
         )
 
 
-_PARSERS: tuple[BaseSmsParser, ...] = (SbiCcTransactionAlertParser(),)
+class SbiAccountCreditAlertParser(BaseSmsParser):
+    """SBI savings/current account inbound credit (NEFT/IMPS/UPI).
+
+    Sample::
+
+        "Dear SBI User, your A/c X0000-credited by Rs.12345 on
+         28Jul26 transfer from Sample Name Ref No 123456789012 -SBI"
+    """
+
+    bank = "sbi"
+    email_type = "sbi_account_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+SBI\s+User,\s+your\s+A/c\s+"
+        r"(?P<account>X\d+)-credited\s+by\s+"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
+        r"(?P<date>\S+)\s+transfer\s+from\s+"
+        r"(?P<sender>.+?)\s+Ref\s+No\s+"
+        r"(?P<ref>\d+)\s+-\s*SBI",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("SBI account credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("sender").strip(),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+_PARSERS: tuple[BaseSmsParser, ...] = (
+    SbiCcTransactionAlertParser(),
+    SbiAccountCreditAlertParser(),
+)
 
 
 class SbiParser(BankSmsParser):

@@ -460,6 +460,58 @@ class IndusindCcPaymentReceivedAlertParser(BaseSmsParser):
         )
 
 
+class IndusindCcRefundAlertParser(BaseSmsParser):
+    """IndusInd credit-card merchant refund.
+
+    Sample::
+
+        "Dear Customer, refund of INR 1,234.00 from SampleMerchant
+         BENGALURU IND has been credited to your IndusInd Bank Credit
+         Card XX0000 on 27-Jul-26 and the refund amount has been
+         adjusted against the outstanding on your card account
+         - IndusInd Bank"
+    """
+
+    bank = "indusind"
+    email_type = "indusind_cc_refund_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+refund\s+of\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+"
+        r"(?P<merchant>.+?)\s+has\s+been\s+credited\s+to\s+your\s+"
+        r"IndusInd\s+Bank\s+Credit\s+Card\s+(?P<card>XX\d+)\s+on\s+"
+        r"(?P<date>\S+)\s+and\s+the\s+refund\s+amount\s+has\s+been\s+"
+        r"adjusted\s+against\s+the\s+outstanding\s+on\s+your\s+card\s+"
+        r"account\s+-\s*IndusInd\s+Bank",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IndusInd CC refund pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 class IndusindCcSpendAlertParser(BaseSmsParser):
     """IndusInd credit-card spend alert.
 
@@ -525,6 +577,7 @@ class IndusindCcSpendAlertParser(BaseSmsParser):
 # UPI ``from``-only regex).
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IndusindCcPaymentReceivedAlertParser(),
+    IndusindCcRefundAlertParser(),
     IndusindCcSpendAlertParser(),
     IndusindAccountUpiCreditAlertParser(),
     IndusindAccountUpiDebitAlertParser(),

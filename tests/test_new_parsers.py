@@ -303,6 +303,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 18),
     }),
+    ("indusind", "indusind/cc_refund.txt", {
+        "email_type": "indusind_cc_refund_alert",
+        "direction": "credit",
+        "amount": Decimal("1234"),
+        "currency": "INR",
+        "card_mask": "XX0000",
+        "counterparty": "SampleMerchant BENGALURU IND",
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 7, 27),
+    }),
     # IndusInd generic account inbound credit (a refund). The "Ref-"
     # clause is descriptive narration (the refund source), stored as
     # counterparty; reference_number stays None so a descriptive string
@@ -594,6 +604,16 @@ def _assert_matches(parsed, expected: dict) -> None:
         "counterparty": "SAMPLE STORE",
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 20),
+    }),
+    ("sbi", "sbi/account_credit.txt", {
+        "email_type": "sbi_account_credit_alert",
+        "direction": "credit",
+        "amount": Decimal("12345"),
+        "currency": "INR",
+        "account_mask": "X0000",
+        "counterparty": "Sample Name",
+        "reference_number": "123456789012",
+        "transaction_date": datetime.date(2026, 7, 28),
     }),
     ("slice", "slice/cc_spend.txt", {
         "email_type": "slice_cc_transaction_alert",
