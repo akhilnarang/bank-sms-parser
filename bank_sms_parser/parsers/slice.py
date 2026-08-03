@@ -46,13 +46,17 @@ class SliceCcBillPaidAlertParser(BaseSmsParser):
         "Your slice UPI credit card bill of Rs.2,500.00 has been paid
          successfully via autopay. Thanks for paying on time! - slice"
 
-    Treated as a ``credit`` event because a payment toward the CC reduces
-    outstanding CC debt. The body carries no card mask — slice's template
-    omits it for this shape — so ``card_mask`` stays ``None``.
+    Direction is ``credit``. A payment reduces outstanding CC debt.
+
+    The body has no card mask. slice omits it for this shape.
+    ``card_mask`` stays ``None``. The counterparty is the fixed label
+    ``"Bill autopay"``. It does not name a merchant. No field shows
+    which card the payment belongs to. ``identifies_by`` is ``none``.
     """
 
     bank = "slice"
     email_type = "slice_cc_bill_paid_alert"
+    identifies_by = "none"
 
     _PATTERN = re.compile(
         r"slice\s+UPI\s+credit\s+card\s+bill\s+of\s+"
@@ -108,10 +112,15 @@ class SliceCcRepaymentReceivedAlertParser(BaseSmsParser):
     credit card`` clause and the ``credited to your card account``
     clause) is required so a promo/OTP body that merely quotes the
     repayment phrase cannot fabricate a transaction.
+
+    The counterparty is the fixed label ``"Bill repayment"``. It does
+    not name a merchant. No field shows which card the payment belongs
+    to. ``identifies_by`` is ``none``.
     """
 
     bank = "slice"
     email_type = "slice_cc_repayment_received_alert"
+    identifies_by = "none"
 
     _PATTERN = re.compile(
         r"Repayment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"

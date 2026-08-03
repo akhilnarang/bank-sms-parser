@@ -93,6 +93,10 @@ def test_slice_cc_bill_paid_alert_with_received_at() -> None:
     result = parse_sms("slice", body, received_at=received)
     assert result.email_type == "slice_cc_bill_paid_alert"
     assert result.bank == "slice"
+    # The body has no merchant and no card mask. The fixed label "Bill
+    # autopay" does not show which card the payment belongs to. The
+    # consumer must not use the counterparty as an event identity.
+    assert result.identifies_by == "none"
     txn = result.transaction
     assert txn is not None
     assert txn.direction == "credit"
@@ -124,6 +128,9 @@ def test_slice_cc_repayment_received_alert_with_received_at() -> None:
     result = parse_sms("slice", body, received_at=received)
     assert result.email_type == "slice_cc_repayment_received_alert"
     assert result.bank == "slice"
+    # The body has no merchant and no card mask. The fixed label "Bill
+    # repayment" does not show which card the payment belongs to.
+    assert result.identifies_by == "none"
     txn = result.transaction
     assert txn is not None
     assert txn.direction == "credit"
