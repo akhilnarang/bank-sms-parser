@@ -1169,11 +1169,26 @@ def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:
     ("equitas", "equitas/negative/payment_due.txt"),
     ("equitas", "equitas/negative/statement_generated.txt"),
     ("equitas", "equitas/negative/mobile_login_failed.txt"),
+    ("idfc", "idfc/negative/asba_blocked.txt"),
+    ("idfc", "idfc/negative/asba_unblocked.txt"),
 ])
 def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:
     body = _read(fixture)
     with pytest.raises(ParseError):
         parse_sms(bank, body)
+
+
+@pytest.mark.parametrize("fixture", [
+    "idfc/negative/asba_blocked.txt",
+    "idfc/negative/asba_unblocked.txt",
+])
+def test_idfc_asba_notices_are_recognized_stubs(fixture) -> None:
+    """Both ASBA lifecycle shapes must carry the recognized-stub marker so
+    the downstream pipeline dispositions them as skipped, not failed."""
+    body = _read(fixture)
+    with pytest.raises(ParseError) as excinfo:
+        parse_sms("idfc", body)
+    assert "idfc_asba_notice_stub: ParserStubError" in str(excinfo.value)
 
 
 def test_hdfc_neft_debit_uses_received_at_for_datetime() -> None:

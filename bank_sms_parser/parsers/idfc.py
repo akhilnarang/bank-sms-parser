@@ -3,7 +3,7 @@
 import datetime
 import re
 
-from bank_sms_parser.exceptions import ParseError
+from bank_sms_parser.exceptions import ParseError, ParserStubError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
@@ -703,6 +703,69 @@ class IdfcAccountCreditAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAsbaNoticeStubParser(BaseSmsParser):
+    """Recognize-and-skip parser for IDFC IPO ASBA lifecycle notices.
+
+    Two shapes of the same lifecycle:
+
+    1) Application received / amount blocked:
+        "Your ASBA application for SAMPLEIPO is received and Application
+         value of Rs 14999 is blocked in your registered Bank account on
+         14/08/2026. Team IDFC FIRST Bank"
+
+    2) Amount unblocked (no/partial allotment, per the registrar):
+        "An amount of Rs 14999 is unblocked on 14/08/2026 on account of
+         No Allotment of shares for SAMPLEIPO as per the RTA.
+         Team IDFC FIRST Bank"
+
+    An ASBA block is a lien, not a debit — the money never leaves the
+    account, and the unblock merely releases the lien. Neither shape is a
+    money-movement event ``SmsTransactionAlert`` can model, so per the
+    skill we recognize the shape and raise ``ParserStubError`` (rather
+    than ``ParseError``) to distinguish "intentionally unsupported known
+    shape" from "generic regex miss". Both anchors require the full ASBA
+    clause (``blocked in your registered Bank account`` /
+    ``unblocked ... as per the RTA``) so a real debit or credit body
+    cannot be swallowed.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_asba_notice_stub"
+
+    _BLOCKED_PATTERN = re.compile(
+        r"Your\s+ASBA\s+application\s+for\s+\S+\s+is\s+received\s+and\s+"
+        r"Application\s+value\s+of\s+Rs\.?\s*[\d,]+(?:\.\d+)?\s+"
+        r"is\s+blocked\s+in\s+your\s+registered\s+Bank\s+account",
+        re.IGNORECASE,
+    )
+
+    _UNBLOCKED_PATTERN = re.compile(
+        r"An\s+amount\s+of\s+Rs\.?\s*[\d,]+(?:\.\d+)?\s+is\s+unblocked\s+"
+        r"on\s+\d{2}/\d{2}/\d{4}\s+on\s+account\s+of\s+.+?\s+"
+        r"as\s+per\s+the\s+RTA",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (
+            self._BLOCKED_PATTERN.search(text)
+            or self._UNBLOCKED_PATTERN.search(text)
+        ):
+            raise ParseError("IDFC ASBA notice: not an ASBA block/unblock shape")
+        raise ParserStubError(
+            "idfc_asba_notice_stub: recognized IPO ASBA lifecycle notice; an "
+            "ASBA block/unblock is a lien on the account, not a debit or "
+            "credit, so this shape is intentionally unimplemented"
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcCcPaymentReceivedParser(),
     # CC spend: unique "spent on your IDFC FIRST Bank Credit Card ending"
@@ -726,6 +789,8 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IdfcAccountImpsCreditAlertParser(),
     IdfcAccountBalanceCreditAlertParser(),
     IdfcAccountCreditAlertParser(),
+    # ASBA lifecycle stub last, so it can never shadow a real parser.
+    IdfcAsbaNoticeStubParser(),
 )
 
 
