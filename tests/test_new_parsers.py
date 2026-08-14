@@ -605,6 +605,29 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 20),
     }),
+    # SBI Card bill-payment processed: no card mask, no date (received_at
+    # fallback asserted separately), alphanumeric ref, constant counterparty.
+    ("sbi", "sbi/cc_payment_received.txt", {
+        "email_type": "sbi_cc_payment_received_alert",
+        "direction": "credit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "counterparty": "Payment received",
+        "reference_number": "ABC00DE0FG0HIJ",
+        "channel": "card",
+    }),
+    # IDFC merchant debit: "for <merchant> transaction." with a DD-Mon-YYYY
+    # date + 24-hour time and no balance trailer.
+    ("idfc", "idfc/account_merchant_debit.txt", {
+        "email_type": "idfc_account_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.00"),
+        "currency": "INR",
+        "account_mask": "XXXXXXX0000",
+        "counterparty": "SamplePay Private Limited",
+        "transaction_date": datetime.date(2026, 8, 5),
+        "transaction_time": datetime.time(13, 34),
+    }),
     ("sbi", "sbi/account_credit.txt", {
         "email_type": "sbi_account_credit_alert",
         "direction": "credit",
@@ -1117,6 +1140,18 @@ def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date == datetime.date(2026, 7, 27)
     assert result.transaction.transaction_time == datetime.time(3, 15)
+
+
+def test_sbi_cc_payment_uses_received_at_for_date_fallback() -> None:
+    body = _read("sbi/cc_payment_received.txt")
+    # 21:45 UTC on 2026-08-13 is 03:15 IST on 2026-08-14.
+    received = datetime.datetime(2026, 8, 13, 21, 45, tzinfo=datetime.UTC)
+    result = parse_sms("sbi", body, received_at=received)
+    assert result.event_time_source == "message_arrival"
+    assert result.identifies_by == "none"
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 8, 14)
+    assert result.transaction.card_mask is None
 
 
 def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:

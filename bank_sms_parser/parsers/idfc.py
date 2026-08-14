@@ -180,6 +180,15 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
          09:30. New Bal :INR 0.00. Call us on 180010888 for dispute.
          Team IDFC FIRST Bank"
 
+    4) Merchant debit anchored on ``for <merchant> transaction.``,
+       carrying a DD-Mon-YYYY date + 24-hour time and no balance
+       trailer (a payment-gateway pull, e.g. a netbanking checkout);
+       ``channel`` stays ``None`` because the body carries no rail
+       marker; the merchant is the counterparty:
+        "Your A/c XXXXXXX0000 is debited by INR 12,345.00 on
+         05-Aug-2026 13:34 for SamplePay Private Limited transaction.
+         Call us on 180010888 for dispute. Team IDFC FIRST Bank."
+
     Each regex is anchored on its discriminating clause so the shapes
     cannot accidentally match each other.
     """
@@ -208,6 +217,14 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\s+(?P<time>\d{1,2}:\d{2})\.\s*"
         r"New\s+Bal\s*:\s*INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
+    _MERCHANT_DEBIT_PATTERN = re.compile(
+        r"Your\s+A/[Cc]\s+(?P<account>X+\d+)\s+is\s+debited\s+by\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{1,2}-[A-Za-z]{3}-\d{4})\s+(?P<time>\d{1,2}:\d{2})\s+"
+        r"for\s+(?P<merchant>.+?)\s+transaction\.\s*"
+        r"Call\s+us\s+on\s+\d+\s+for\s+dispute"
     )
 
     def parse(
@@ -256,9 +273,26 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
                 ),
             )
 
+        if match := self._MERCHANT_DEBIT_PATTERN.search(text):
+            txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=txn_dt.date(),
+                    transaction_time=txn_dt.time(),
+                    counterparty=match.group("merchant").strip(),
+                    account_mask=match.group("account"),
+                ),
+            )
+
         raise ParseError(
             "IDFC account transaction alert: no known pattern matched "
-            "(tried card spend, UPI debit, generic debit)"
+            "(tried card spend, UPI debit, generic debit, merchant debit)"
         )
 
     def _build(
