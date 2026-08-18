@@ -1111,6 +1111,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         "transaction_date": None,
         "transaction_time": None,
     }),
+    # HDFC net-banking payee transfer debit. The bank names no rail, so the
+    # channel is "online". The SMS carries no payee, reference, balance, or
+    # in-body date.
+    ("hdfc", "hdfc/account_online_transfer_debit.txt", {
+        "email_type": "hdfc_account_online_transfer_debit_alert",
+        "direction": "debit",
+        "amount": Decimal("12345.67"),
+        "currency": "INR",
+        "account_mask": "XX0000",
+        "counterparty": None,
+        "reference_number": None,
+        "channel": "online",
+        "transaction_date": None,
+        "transaction_time": None,
+    }),
     # HDFC RTGS "txn initiated" outward debit. This "initiated" leg is the
     # only one parsed; the separate "RTGS Money Deposited~..." confirmation
     # is left unparsed. No payee, no reference, no balance, no in-body date.
@@ -1199,6 +1214,29 @@ def test_hdfc_neft_debit_uses_received_at_for_datetime() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date == datetime.date(2026, 7, 27)
     assert result.transaction.transaction_time == datetime.time(1, 3)
+
+
+def test_hdfc_online_transfer_debit_uses_received_at_for_datetime() -> None:
+    body = _read("hdfc/account_online_transfer_debit.txt")
+    # 19:33 UTC on 2026-07-26 is 01:03 IST on 2026-07-27.
+    received = datetime.datetime(2026, 7, 26, 19, 33, tzinfo=datetime.UTC)
+    result = parse_sms("hdfc", body, received_at=received)
+    assert result.event_time_source == "message_arrival"
+    assert result.transaction is not None
+    assert result.transaction.transaction_date == datetime.date(2026, 7, 27)
+    assert result.transaction.transaction_time == datetime.time(1, 3)
+
+
+def test_hdfc_online_transfer_debit_does_not_shadow_neft() -> None:
+    """The "Money Transfer" shape and the "NEFT txn" shape stay distinct.
+
+    Each parser must claim only its own wording."""
+    online = parse_sms("hdfc", _read("hdfc/account_online_transfer_debit.txt"))
+    assert online.email_type == "hdfc_account_online_transfer_debit_alert"
+    assert online.transaction is not None
+    assert online.transaction.channel == "online"
+    neft = parse_sms("hdfc", _read("hdfc/account_neft_debit.txt"))
+    assert neft.email_type == "hdfc_account_neft_debit_alert"
 
 
 def test_hdfc_rtgs_initiated_omits_balance_and_reference() -> None:
