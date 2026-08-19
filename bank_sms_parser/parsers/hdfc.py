@@ -70,7 +70,9 @@ class HdfcDcTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant"),
@@ -129,7 +131,9 @@ class HdfcDcReversalAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant").strip(),
@@ -184,7 +188,9 @@ class HdfcCcReversalAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant").strip(),
@@ -392,7 +398,9 @@ class HdfcCcRefundAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=counterparty,
                 reference_number=reference_number,
@@ -446,7 +454,8 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
         r"DEAR\s+HDFCBANK\s+CARDMEMBER,\s+"
         r"PAYMENT\s+OF\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"RECEIVED\s+TOWARDS\s+YOUR\s+CREDIT\s+CARD\s+ENDING\s+WITH\s+(?P<card>\d+)\s+"
-        r"ON\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})",
+        r"ON\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})"
+        r"(?:\.?\s*YOUR\s+AVAILABLE\s+LIMIT\s+IS\s+RS\.?\s*(?P<balance>[\d,]+(?:\.\d+)?))?",
         re.IGNORECASE,
     )
 
@@ -485,16 +494,23 @@ class HdfcCcPaymentReceivedAlertParser(BaseSmsParser):
         ref: str | None,
         role: Literal["primary", "provisional", "restatement"],
     ) -> ParsedSms:
+        # Only the uppercase template carries an available limit. Keep it as
+        # balance; the other templates omit it.
+        limit = match.groupdict().get("balance")
+        balance = Money(amount=parse_amount(limit), currency="INR") if limit else None
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
             ledger_role=role,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 reference_number=ref,
                 card_mask=match.group("card"),
+                balance=balance,
             ),
         )
 
@@ -541,7 +557,9 @@ class HdfcAccountTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("counterparty").strip(),
                 reference_number=match.group("ref"),
@@ -600,7 +618,9 @@ class HdfcAccountUpiCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("vpa"),
                 reference_number=match.group("ref"),
@@ -639,7 +659,9 @@ class HdfcAccountImpsOutwardAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=f"Acct {match.group('dest')}",
                 reference_number=match.group("ref"),
@@ -736,7 +758,9 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
                 bank=self.bank,
                 transaction=SmsTransactionAlert(
                     direction="debit",
-                    amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
                     transaction_date=parse_date(match.group("date")),
                     counterparty=match.group("payee").strip(),
                     reference_number=match.group("ref"),
@@ -835,7 +859,9 @@ class HdfcAccountCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("counterparty").strip(),
                 channel="imps",
@@ -906,7 +932,9 @@ class HdfcCcSmartpayBbpsAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 counterparty=f"SpayBBPS {ref}",
@@ -963,7 +991,9 @@ class HdfcAccountTransferDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 counterparty=f"PPF/SSY A/c {match.group('dest')}",
@@ -1089,7 +1119,9 @@ class HdfcAccountRtgsInitiatedDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 channel="rtgs",
@@ -1142,9 +1174,7 @@ class HdfcAccountOnlineTransferDebitAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.fullmatch(text)):
-            raise ParseError(
-                "HDFC account online transfer debit pattern did not match"
-            )
+            raise ParseError("HDFC account online transfer debit pattern did not match")
         txn_date: datetime.date | None = None
         txn_time: datetime.time | None = None
         if received_at is not None:
