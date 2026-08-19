@@ -605,6 +605,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         "channel": "card",
         "transaction_date": datetime.date(2026, 7, 20),
     }),
+    # SBI debit-card spend. The body carries a reference number, card mask,
+    # merchant, in-body date and time, and the updated available balance.
+    ("sbi", "sbi/dc_transaction.txt", {
+        "email_type": "sbi_dc_transaction_alert",
+        "direction": "debit",
+        "amount": Decimal("100.00"),
+        "currency": "INR",
+        "card_mask": "X0000",
+        "counterparty": "SAMPLE MART",
+        "reference_number": "000000000000",
+        "balance": Decimal("200.00"),
+        "channel": "card",
+        "transaction_date": datetime.date(2026, 8, 19),
+        "transaction_time": datetime.time(13, 35, 48),
+    }),
     # SBI Card bill-payment processed: no card mask, no date (received_at
     # fallback asserted separately), alphanumeric ref, constant counterparty.
     ("sbi", "sbi/cc_payment_received.txt", {
@@ -1167,6 +1182,15 @@ def test_sbi_cc_payment_uses_received_at_for_date_fallback() -> None:
     assert result.transaction is not None
     assert result.transaction.transaction_date == datetime.date(2026, 8, 14)
     assert result.transaction.card_mask is None
+
+
+def test_sbi_dc_and_cc_spends_stay_distinct() -> None:
+    """The debit-card and credit-card spend shapes must not shadow each
+    other. Each parser claims only its own wording."""
+    dc = parse_sms("sbi", _read("sbi/dc_transaction.txt"))
+    assert dc.email_type == "sbi_dc_transaction_alert"
+    cc = parse_sms("sbi", _read("sbi/cc_spend_889.txt"))
+    assert cc.email_type == "sbi_cc_transaction_alert"
 
 
 def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:

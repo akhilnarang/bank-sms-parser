@@ -10,6 +10,7 @@ from bank_sms_parser.parsing import (
     normalize_whitespace,
     parse_amount,
     parse_date,
+    parse_datetime,
     received_at_to_ist,
 )
 
@@ -180,8 +181,75 @@ class SbiCcPaymentReceivedAlertParser(BaseSmsParser):
         )
 
 
+class SbiDcTransactionAlertParser(BaseSmsParser):
+    """SBI debit-card spend alert.
+
+    Sample::
+
+        "Dear Customer, transaction number 000000000000 for Rs.100.00 by
+         SBI Debit Card X0000 done at SampleMerchant on 01Jan26 at
+         10:00:00. Your updated available balance is Rs.200.00. If not
+         done by you, forward this SMS to 0000000000/ call 0000000000 to
+         block card. GOI helpline for cyber fraud 1930."
+
+    The body carries the reference number, the card mask, the merchant,
+    the date and time, and the updated available balance. The fraud report
+    trailer is required. It stops a truncated or unrelated SBI message from
+    matching on an amount and a card number alone.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_dc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+transaction\s+number\s+(?P<ref>\d+)\s+"
+        r"for\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"by\s+SBI\s+Debit\s+Card\s+(?P<card>X\d+)\s+"
+        r"done\s+at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{1,2}[A-Za-z]{3}\d{2,4})\s+at\s+"
+        r"(?P<time>\d{1,2}:\d{2}:\d{2})\.\s+"
+        r"Your\s+updated\s+available\s+balance\s+is\s+"
+        r"Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)\.\s+"
+        r"If\s+not\s+done\s+by\s+you,\s+forward\s+this\s+SMS\s+to\s+"
+        r".*?block\s+card",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("SBI DC transaction alert pattern did not match")
+        txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                reference_number=match.group("ref"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                channel="card",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     SbiCcTransactionAlertParser(),
+    SbiDcTransactionAlertParser(),
     # CC payment-received: unique "payment ... for your SBI Credit Card has
     # been successfully processed" anchor; cannot collide with the spend or
     # account-credit shapes.
