@@ -1343,9 +1343,10 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 6, 11),
             },
         ),
-        # Same debit shape, but "TRF TO FD no." carries no ref token — the
-        # descriptor is the narration and reference_number stays None (must not
-        # scrape boilerplate as a ref).
+        # "TRF TO FD no." is a transfer into a fixed deposit — counterparty is
+        # labeled "ICICI FD" so the categorizer reads it as an investment. It
+        # carries no ref token, so reference_number stays None (must not scrape
+        # boilerplate as a ref).
         (
             "icici",
             "icici/account_debit_info_trf_fd.txt",
@@ -1355,7 +1356,7 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "amount": Decimal("23456.00"),
                 "currency": "INR",
                 "account_mask": "XX000",
-                "counterparty": "TRF TO FD no.",
+                "counterparty": "ICICI FD",
                 "reference_number": None,
                 "channel": None,
                 "balance": Decimal("32109.00"),

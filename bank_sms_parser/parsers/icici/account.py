@@ -43,14 +43,21 @@ _NEFT_INFO = re.compile(
     re.IGNORECASE,
 )
 
+# A transfer into a fixed deposit ("TRF TO FD no."). The counterparty is the
+# deposit itself, so label it "ICICI FD"; the downstream categorizer reads it as
+# an investment. Anchored to the leading boilerplate so a rail descriptor whose
+# name segment merely contains "to fd" (e.g. an NEFT sender) is not caught.
+_FD_INFO = re.compile(r"^\s*TRF\s+TO\s+FD\b", re.IGNORECASE)
+_FD_LABEL = "ICICI FD"
+
 
 def _classify_info(descriptor: str) -> _InfoFields:
     """Extract the channel, reference, and counterparty from ``Info`` text.
 
     The channel comes from a known rail token. The reference is the first
-    clear alphanumeric reference token. For ``NEFT-<reference>-<sender>``
-    text, the sender is the counterparty. For other formats, the full
-    descriptor is the counterparty.
+    clear alphanumeric reference token. A transfer to a fixed deposit becomes
+    "ICICI FD". For ``NEFT-<reference>-<sender>`` text, the sender is the
+    counterparty. For other formats, the full descriptor is the counterparty.
     """
     segments = re.split(r"[\s*\-]", descriptor.strip())
     channel: str | None = None
@@ -61,7 +68,9 @@ def _classify_info(descriptor: str) -> _InfoFields:
     ref_match = _REF_TOKEN.search(descriptor)
     reference_number = ref_match.group(0) if ref_match else None
     counterparty = descriptor.strip() or None
-    if neft_match := _NEFT_INFO.fullmatch(descriptor.strip()):
+    if _FD_INFO.search(descriptor):
+        counterparty = _FD_LABEL
+    elif neft_match := _NEFT_INFO.fullmatch(descriptor.strip()):
         reference_number = neft_match.group("ref")
         counterparty = neft_match.group("counterparty").strip()
     return _InfoFields(
