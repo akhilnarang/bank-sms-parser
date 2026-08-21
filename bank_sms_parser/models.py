@@ -36,7 +36,9 @@ class ParsedSms(BaseModel):
     bank: str
     transaction: SmsTransactionAlert | None = None
 
-    ledger_role: Literal["primary", "provisional", "restatement"] = "primary"
+    ledger_role: Literal["primary", "provisional", "restatement", "completion"] = (
+        "primary"
+    )
     """This message's relation to the money event, not a policy for it.
 
     - ``primary``: the message that carries the event into the ledger (default;
@@ -45,6 +47,11 @@ class ParsedSms(BaseModel):
       message (e.g. a payment "received" notice ahead of its settlement).
     - ``restatement``: a redundant confirmation of an *earlier* message that
       already carried the event (e.g. a "thank you for the payment" echo).
+    - ``completion``: a *later* message that supplies a field the primary
+      message lacked — typically a reference — for the same event an *earlier*
+      message already recorded (e.g. an RTGS settlement carrying the UTR for a
+      submission alert that named only the account). The consumer completes the
+      earlier row and records no new row of its own.
 
     A consumer decides what to do with a non-``primary`` role (record no row,
     notify differently); the parser only states the fact. Meaningful only when

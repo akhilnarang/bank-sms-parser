@@ -1698,6 +1698,16 @@ def test_idfc_asba_notices_are_recognized_stubs(fixture) -> None:
     assert "idfc_asba_notice_stub: ParserStubError" in str(excinfo.value)
 
 
+def test_hdfc_rtgs_deposited_is_a_completion_leg() -> None:
+    """The RTGS settlement leg carries the UTR for an event a prior submission
+    alert already recorded. It declares ledger_role='completion' so the
+    consumer fuses the reference onto that row and opens no row of its own."""
+    result = parse_sms("hdfc", _read("hdfc/account_rtgs_deposited.txt"))
+    assert result.ledger_role == "completion"
+    assert result.transaction is not None
+    assert result.transaction.reference_number == "HDFCR00000000000000000"
+
+
 def test_hdfc_neft_debit_uses_received_at_for_datetime() -> None:
     body = _read("hdfc/account_neft_debit.txt")
     # 19:33 UTC on 2026-07-26 is 01:03 IST on 2026-07-27.

@@ -1257,6 +1257,10 @@ class HdfcRtgsMoneyDepositedParser(BaseSmsParser):
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
+            # This leg completes the initiated debit with the UTR; it opens no
+            # ledger row of its own. The consumer fuses the reference onto the
+            # earlier row (see ``ledger_role`` docs).
+            ledger_role="completion",
             transaction=SmsTransactionAlert(
                 direction="debit",
                 amount=Money(
