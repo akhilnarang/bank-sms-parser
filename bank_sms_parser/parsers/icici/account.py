@@ -7,7 +7,12 @@ from typing import NamedTuple
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BaseSmsParser
-from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_date
+from bank_sms_parser.parsing import (
+    normalize_whitespace,
+    parse_amount,
+    parse_date,
+    parse_datetime,
+)
 
 
 class _InfoFields(NamedTuple):
@@ -402,5 +407,64 @@ class IciciAccountMandateDebitAlertParser(BaseSmsParser):
                 counterparty=match.group("merchant").strip(),
                 reference_number=match.group("ref"),
                 channel="emandate",
+            ),
+        )
+
+
+class IciciAccountNeftCompletionAlertParser(BaseSmsParser):
+    """ICICI outward-NEFT settlement confirmation carrying the full UTR.
+
+    Sample:
+        "ICICI BANK NEFT Transaction with reference number IN00000000000000
+         for Rs. 2,500.00 has been credited to the beneficiary account on
+         21-08-2026 at 15:02:16"
+
+    ICICI's account-debit alert for an outward NEFT
+    (``IciciAccountDebitInfoAlertParser``) truncates the UTR in its ``Info
+    BIL*NEFT*...`` narration, so that row records the account but no usable
+    reference. This later confirmation carries the **full** UTR and the exact
+    time. It is the settlement of the same debit — direction ``debit`` (money
+    left the user), ``channel="neft"`` — and names no source account.
+
+    Declares ``ledger_role="completion"``: it opens no ledger row of its own.
+    The consumer stamps this UTR onto the unique prior ICICI NEFT debit (which
+    still lacks a reference) so the transfer can pair with its credit leg.
+    """
+
+    bank = "icici"
+    email_type = "icici_account_neft_completion_alert"
+
+    _PATTERN = re.compile(
+        r"ICICI\s+BANK\s+NEFT\s+Transaction\s+with\s+reference\s+number\s+"
+        r"(?P<ref>[A-Z0-9]+)\s+for\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"has\s+been\s+credited\s+to\s+the\s+beneficiary\s+account\s+"
+        r"on\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI NEFT completion pattern did not match")
+        dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            # Supplies the UTR the account-debit alert truncated; opens no row
+            # of its own. See bank_sms_parser ParsedSms.ledger_role.
+            ledger_role="completion",
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                reference_number=match.group("ref"),
+                channel="neft",
             ),
         )

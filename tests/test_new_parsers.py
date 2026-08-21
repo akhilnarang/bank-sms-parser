@@ -1577,6 +1577,26 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(1, 6, 23),
             },
         ),
+        # ICICI outward-NEFT completion: the settlement confirmation carrying the
+        # FULL UTR (the account-debit alert truncates it). direction=debit,
+        # channel=neft, no source account; the dashboard fuses this UTR onto the
+        # unique prior ICICI NEFT debit.
+        (
+            "icici",
+            "icici/account_neft_completion.txt",
+            {
+                "email_type": "icici_account_neft_completion_alert",
+                "direction": "debit",
+                "amount": Decimal("2500.00"),
+                "currency": "INR",
+                "account_mask": None,
+                "counterparty": None,
+                "reference_number": "IN00000000000000",
+                "channel": "neft",
+                "transaction_date": datetime.date(2026, 8, 21),
+                "transaction_time": datetime.time(15, 2, 16),
+            },
+        ),
         # IDFC inbound NEFT credit: the credit counterpart of the outward NEFT
         # debit, using the same "credited with Rs. ... Info: NEFT/<utr>/<name>.
         # New bal:" frame as the RTGS credit but with the NEFT rail token.
@@ -1706,6 +1726,17 @@ def test_hdfc_rtgs_deposited_is_a_completion_leg() -> None:
     assert result.ledger_role == "completion"
     assert result.transaction is not None
     assert result.transaction.reference_number == "HDFCR00000000000000000"
+
+
+def test_icici_neft_completion_is_a_completion_leg() -> None:
+    """The ICICI outward-NEFT confirmation carries the full UTR the account-debit
+    alert truncated. It declares ledger_role='completion' so the consumer stamps
+    the UTR onto the prior ICICI NEFT debit and opens no row of its own."""
+    result = parse_sms("icici", _read("icici/account_neft_completion.txt"))
+    assert result.ledger_role == "completion"
+    assert result.transaction is not None
+    assert result.transaction.reference_number == "IN00000000000000"
+    assert result.transaction.direction == "debit"
 
 
 def test_hdfc_neft_debit_uses_received_at_for_datetime() -> None:

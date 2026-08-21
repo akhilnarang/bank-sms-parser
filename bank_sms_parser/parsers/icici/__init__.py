@@ -9,6 +9,7 @@ from bank_sms_parser.parsers.icici.account import (
     IciciAccountDebitInfoAlertParser,
     IciciAccountImpsCreditAlertParser,
     IciciAccountMandateDebitAlertParser,
+    IciciAccountNeftCompletionAlertParser,
     IciciAccountTransactionAlertParser,
     IciciAccountUpiCreditAlertParser,
 )
@@ -25,6 +26,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IciciAccountUpiCreditAlertParser(),
     IciciAccountImpsCreditAlertParser(),
     IciciAccountMandateDebitAlertParser(),
+    # Outward-NEFT completion: unique "ICICI BANK NEFT Transaction with
+    # reference number ... credited to the beneficiary account" anchor.
+    IciciAccountNeftCompletionAlertParser(),
     IciciAccountCreditInfoAlertParser(),
     IciciAccountDebitInfoAlertParser(),
     IciciAccountTransactionAlertParser(),
@@ -52,6 +56,7 @@ __all__ = [
     "IciciAccountDebitInfoAlertParser",
     "IciciAccountImpsCreditAlertParser",
     "IciciAccountMandateDebitAlertParser",
+    "IciciAccountNeftCompletionAlertParser",
     "IciciAccountTransactionAlertParser",
     "IciciAccountUpiCreditAlertParser",
     "IciciCcPaymentReceivedAlertParser",
