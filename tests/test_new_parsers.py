@@ -1520,9 +1520,10 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": None,
             },
         ),
-        # HDFC RTGS "txn initiated" outward debit. This "initiated" leg is the
-        # only one parsed; the separate "RTGS Money Deposited~..." confirmation
-        # is left unparsed. No payee, no reference, no balance, no in-body date.
+        # HDFC RTGS "initiated" outward debit. This "initiated" leg is the only
+        # one parsed; the "RTGS Money Deposited~..." confirmation twin is
+        # recognized and skipped. It names the source account (kept for
+        # attribution) but no payee, reference, balance, or in-body date.
         (
             "hdfc",
             "hdfc/account_rtgs_debit.txt",
@@ -1536,6 +1537,83 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "reference_number": None,
                 "channel": "rtgs",
                 "transaction_date": None,
+            },
+        ),
+        # Same outward RTGS debit worded "RTGS transaction initiated:" (the full
+        # word) rather than "txn". Both wordings share one shape and email_type.
+        # HDFC changed the wording between real transfers (June "txn", August
+        # "transaction"), so both must parse.
+        (
+            "hdfc",
+            "hdfc/account_rtgs_debit_transaction.txt",
+            {
+                "email_type": "hdfc_account_rtgs_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("123456.78"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "counterparty": None,
+                "reference_number": None,
+                "channel": "rtgs",
+                "transaction_date": None,
+            },
+        ),
+        # HDFC outward RTGS settlement leg ("RTGS Money Deposited~..."). Carries
+        # the UTR, beneficiary, and exact in-body date+time; no source account
+        # mask (the dashboard fuses this UTR onto the initiated debit row).
+        (
+            "hdfc",
+            "hdfc/account_rtgs_deposited.txt",
+            {
+                "email_type": "hdfc_account_rtgs_deposited_alert",
+                "direction": "debit",
+                "amount": Decimal("200000.00"),
+                "currency": "INR",
+                "account_mask": None,
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "HDFCR00000000000000000",
+                "channel": "rtgs",
+                "transaction_date": datetime.date(2026, 8, 21),
+                "transaction_time": datetime.time(1, 6, 23),
+            },
+        ),
+        # IDFC inbound NEFT credit: the credit counterpart of the outward NEFT
+        # debit, using the same "credited with Rs. ... Info: NEFT/<utr>/<name>.
+        # New bal:" frame as the RTGS credit but with the NEFT rail token.
+        (
+            "idfc",
+            "idfc/account_neft_credit.txt",
+            {
+                "email_type": "idfc_account_neft_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("2500.00"),
+                "currency": "INR",
+                "account_mask": "XXXXXXX0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "IN00000000000000",
+                "balance": Decimal("99999.99"),
+                "channel": "neft",
+                "transaction_date": datetime.date(2026, 8, 21),
+            },
+        ),
+        # IDFC inbound RTGS credit: the "credited with Rs. ... Info: RTGS/
+        # <ref>/<name>" frame is the credit counterpart of the outward RTGS
+        # debit. Remitter name is the counterparty; the RTGS reference and the
+        # new balance are carried.
+        (
+            "idfc",
+            "idfc/account_rtgs_credit.txt",
+            {
+                "email_type": "idfc_account_rtgs_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("200000.00"),
+                "currency": "INR",
+                "account_mask": "XXXXXXX0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "HDFCR00000000000000000",
+                "balance": Decimal("99999.99"),
+                "channel": "rtgs",
+                "transaction_date": datetime.date(2026, 8, 21),
             },
         ),
     ],
@@ -1654,14 +1732,16 @@ def test_hdfc_online_transfer_debit_does_not_shadow_neft() -> None:
 
 
 def test_hdfc_rtgs_initiated_omits_balance_and_reference() -> None:
-    """The RTGS "initiated" alert carries neither a balance nor a
-    reference number; both must stay None rather than be fabricated."""
+    """The RTGS "initiated" alert carries neither a balance nor a reference
+    number, and no payee; all must stay None rather than be fabricated. It
+    does name the source account, which the confirmation twin omits."""
     body = _read("hdfc/account_rtgs_debit.txt")
     result = parse_sms("hdfc", body)
     assert result.transaction is not None
     assert result.transaction.balance is None
     assert result.transaction.reference_number is None
     assert result.transaction.counterparty is None
+    assert result.transaction.account_mask == "XX0000"
 
 
 def test_hdfc_rtgs_initiated_uses_received_at_for_date_fallback() -> None:

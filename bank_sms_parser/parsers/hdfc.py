@@ -1070,15 +1070,22 @@ class HdfcAccountNeftDebitAlertParser(BaseSmsParser):
 class HdfcAccountRtgsInitiatedDebitAlertParser(BaseSmsParser):
     """HDFC savings/current-account outward RTGS debit alert ("initiated").
 
-    Sample:
+    Two wordings share this shape:
         "RTGS txn initiated: Of Rs.123456 from your HDFC Bank A/c XX0000
          using Online Banking. Not you?Call 18002586161/SMS BLOCK OB to
          7308080808"
+        "RTGS transaction initiated: Of Rs.123456 from your HDFC Bank A/c
+         XX0000 using Online Banking. Not you?Call 18002586161/SMS BLOCK
+         OB to 7308080808"
 
-    HDFC sends two SMSes per RTGS transfer: this "txn initiated" alert
-    (the outward debit leg) and a separate "RTGS Money Deposited~..."
-    tilde-format confirmation (the redundant credit leg, left unparsed).
-    Only the "initiated" alert is parsed here as the single transaction.
+    HDFC sends two SMSes per RTGS transfer. This "initiated" alert is the
+    ledger debit and names the source account, which the settlement message
+    omits, so it keeps the debit attributable to the right HDFC account. The
+    bank also sends a "RTGS Money Deposited~..." settlement SMS
+    (``HdfcRtgsMoneyDepositedParser``) carrying the UTR and beneficiary but no
+    source account. The dashboard fuses the two: it stamps the settlement
+    leg's UTR onto this initiated row, so the single debit keeps both the
+    account and the reference, and does not double-count the transfer.
 
     This shape carries amount, source account mask, and channel only. The
     "Not you?Call .../SMS BLOCK ..." anti-fraud boilerplate is not part of
@@ -1092,7 +1099,7 @@ class HdfcAccountRtgsInitiatedDebitAlertParser(BaseSmsParser):
     email_type = "hdfc_account_rtgs_debit_alert"
 
     _PATTERN = re.compile(
-        r"RTGS\s+txn\s+initiated:\s*"
+        r"RTGS\s+(?:txn|transaction)\s+initiated:\s*"
         r"Of\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"from\s+your\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
         r"using\s+Online\s+Banking"
@@ -1197,6 +1204,73 @@ class HdfcAccountOnlineTransferDebitAlertParser(BaseSmsParser):
         )
 
 
+class HdfcRtgsMoneyDepositedParser(BaseSmsParser):
+    """HDFC outward RTGS settlement alert ("RTGS Money Deposited~").
+
+    Sample:
+        "RTGS Money Deposited~INR 2,00,000.00~To SAMPLE NAME~Txn No:
+         HDFCR00000000000000000~On 21-08-2026 at 01:06:23~-HDFC Bank"
+
+    Fires when an outward RTGS settles at the beneficiary bank. It is the
+    settlement leg of the transfer and carries the UTR (``reference_number``),
+    the beneficiary (``counterparty``), and an exact in-body date and time.
+    Direction is ``debit`` (money left the user); ``channel`` is ``rtgs``.
+    The template names no source account, so ``account_mask`` stays ``None``.
+
+    The submission leg ("RTGS ... initiated", ``HdfcAccountRtgsInitiatedDebitAlertParser``)
+    names the source account but carries no UTR. The two are one debit but
+    arrive as two SMS. This parser only extracts the settlement fields; the
+    dashboard fuses them, stamping this leg's UTR onto the unique initiated
+    debit row (fail-closed) so the ledger row keeps both the account and the
+    reference. This leg therefore does not open its own ledger row.
+
+    The anchor requires the full "RTGS Money Deposited~...~Txn No: ...~On
+    <date> at <time>~-HDFC Bank" frame. A body that shares only the opening
+    words (for example a failed or returned RTGS with a different trailer)
+    fails the anchor and surfaces as an error, not a wrong debit.
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_rtgs_deposited_alert"
+
+    _PATTERN = re.compile(
+        r"RTGS\s+Money\s+Deposited~"
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)~"
+        r"To\s+(?P<name>.+?)~"
+        r"Txn\s+No:\s*(?P<ref>\S+?)~"
+        r"On\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})~"
+        r"-?\s*HDFC\s+Bank",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC RTGS money-deposited pattern did not match")
+        dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("name").strip(),
+                reference_number=match.group("ref"),
+                channel="rtgs",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     # DC reversal has a unique "Transaction Reversed!" banner; grouped with
@@ -1227,9 +1301,13 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountUpiDebitAlertParser(),
     HdfcAccountTransferDebitAlertParser(),
     HdfcAccountNeftDebitAlertParser(),
-    # RTGS "txn initiated" outward debit: unique "RTGS txn initiated:"
-    # anchor, so ordering vs the other account shapes is not load-bearing.
+    # RTGS "initiated" outward debit: unique "RTGS ... initiated:" anchor, so
+    # ordering vs the other account shapes is not load-bearing.
     HdfcAccountRtgsInitiatedDebitAlertParser(),
+    # Outward RTGS settlement leg ("RTGS Money Deposited~..."): unique tilde
+    # frame. The dashboard fuses its UTR onto the initiated debit; it opens no
+    # ledger row of its own. Order not load-bearing (unique anchor).
+    HdfcRtgsMoneyDepositedParser(),
     HdfcAccountOnlineTransferDebitAlertParser(),
 )
 
