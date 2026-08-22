@@ -1577,6 +1577,27 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(1, 6, 23),
             },
         ),
+        # ICICI outward NEFT debit whose Info truncates the UTR to "IN00". That
+        # token is under six chars, so the parser does not scrape it as a
+        # reference; it stays the counterparty and reference_number is None. The
+        # completion leg later supplies the full UTR. This guards the assumption
+        # the fusion relies on.
+        (
+            "icici",
+            "icici/account_debit_info_neft_truncated.txt",
+            {
+                "email_type": "icici_account_debit_info_alert",
+                "direction": "debit",
+                "amount": Decimal("2000.00"),
+                "currency": "INR",
+                "account_mask": "XX000",
+                "counterparty": "BIL*NEFT*IN00",
+                "reference_number": None,
+                "channel": "neft",
+                "balance": Decimal("99999.99"),
+                "transaction_date": datetime.date(2026, 8, 21),
+            },
+        ),
         # ICICI outward-NEFT completion: the settlement confirmation carrying the
         # FULL UTR (the account-debit alert truncates it). direction=debit,
         # channel=neft, no source account; the dashboard fuses this UTR onto the
@@ -1978,6 +1999,24 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
             "slice",
             "Rs. 12,345 has been credited to your A/c xx0000 from CUSTOMER NAME "
             "on 18-Jul-26 via RTGS (Ref ID: SAMPLE00000000000000000)",
+        ),
+        # HDFC "Money Deposited" frame with trailing text after "-HDFC Bank".
+        # The completion parser is end-anchored, so a different outcome (e.g. a
+        # returned transfer) must not be read as a settled debit.
+        (
+            "hdfc",
+            "RTGS Money Deposited~INR 1.00~To SAMPLE NAME~Txn No: "
+            "HDFCR00000000000000000~On 21-08-2026 at 01:06:23~-HDFC Bank "
+            "TRANSFER FAILED; funds returned",
+        ),
+        # ICICI NEFT completion frame with trailing text after the time. The
+        # end anchor rejects it, so a reversed/returned notice cannot be read as
+        # a completion.
+        (
+            "icici",
+            "ICICI BANK NEFT Transaction with reference number IN00000000000000 "
+            "for Rs. 1.00 has been credited to the beneficiary account on "
+            "21-08-2026 at 15:02:16 - later reversed",
         ),
     ],
 )

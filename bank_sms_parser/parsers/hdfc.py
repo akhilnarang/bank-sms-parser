@@ -1239,7 +1239,7 @@ class HdfcRtgsMoneyDepositedParser(BaseSmsParser):
         r"To\s+(?P<name>.+?)~"
         r"Txn\s+No:\s*(?P<ref>\S+?)~"
         r"On\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})~"
-        r"-?\s*HDFC\s+Bank",
+        r"-?\s*HDFC\s+Bank\s*$",
         re.IGNORECASE,
     )
 

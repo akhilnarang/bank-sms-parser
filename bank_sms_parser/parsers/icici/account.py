@@ -438,7 +438,7 @@ class IciciAccountNeftCompletionAlertParser(BaseSmsParser):
         r"ICICI\s+BANK\s+NEFT\s+Transaction\s+with\s+reference\s+number\s+"
         r"(?P<ref>[A-Z0-9]+)\s+for\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"has\s+been\s+credited\s+to\s+the\s+beneficiary\s+account\s+"
-        r"on\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})",
+        r"on\s+(?P<date>\d{1,2}-\d{1,2}-\d{4})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})\s*$",
         re.IGNORECASE,
     )
 
