@@ -876,6 +876,21 @@ def _assert_matches(parsed, expected: dict) -> None:
             },
         ),
         (
+            "sbi",
+            "sbi/account_imps_credit.txt",
+            {
+                "email_type": "sbi_account_imps_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("100.00"),
+                "currency": "INR",
+                "account_mask": "XXXXXXXX0000",
+                "counterparty": "Mr Sample Name",
+                "reference_number": "000000000000",
+                "channel": "imps",
+                "transaction_date": datetime.date(2026, 1, 1),
+            },
+        ),
+        (
             "slice",
             "slice/cc_spend.txt",
             {
@@ -1694,6 +1709,15 @@ def test_sbi_dc_and_cc_spends_stay_distinct() -> None:
     assert dc.email_type == "sbi_dc_transaction_alert"
     cc = parse_sms("sbi", _read("sbi/cc_spend_889.txt"))
     assert cc.email_type == "sbi_cc_transaction_alert"
+
+
+def test_sbi_account_credit_shapes_stay_distinct() -> None:
+    """The two inbound-credit shapes must not shadow each other. Each
+    parser claims only its own wording."""
+    transfer = parse_sms("sbi", _read("sbi/account_credit.txt"))
+    assert transfer.email_type == "sbi_account_credit_alert"
+    imps = parse_sms("sbi", _read("sbi/account_imps_credit.txt"))
+    assert imps.email_type == "sbi_account_imps_credit_alert"
 
 
 def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:

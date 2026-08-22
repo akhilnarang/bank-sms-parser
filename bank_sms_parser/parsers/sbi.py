@@ -117,6 +117,63 @@ class SbiAccountCreditAlertParser(BaseSmsParser):
         )
 
 
+class SbiAccountImpsCreditAlertParser(BaseSmsParser):
+    """SBI savings/current account inbound IMPS credit.
+
+    Sample::
+
+        "Dear Customer, Your a/c no. XXXXXXXX0000 is credited by Rs.100.00
+         on 01-01-26 by a/c linked to mobile 9XXXXXX000-Mr Sample Name
+         (IMPS Ref# 000000000000)-SBI"
+
+    IMPS is a mobile-linked instant transfer, so the template names the
+    sender's masked mobile and name instead of an account and IFSC. The
+    sender is the counterparty and the IMPS reference is the reference, so
+    a self-transfer from one of the user's own accounts dedupes against the
+    matching outbound debit by reference. The channel is ``imps``. The
+    "-SBI" trailer is required so a truncated or unrelated SBI message
+    cannot match on an amount and account alone.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_account_imps_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+Your\s+a/c\s+no\.\s+(?P<account>X+\d+)\s+"
+        r"is\s+credited\s+by\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
+        r"(?P<date>\d{1,2}-\d{1,2}-(?:\d{4}|\d{2}))\s+"
+        r"by\s+a/c\s+linked\s+to\s+mobile\s+[\dX]+-(?P<sender>.+?)\s+"
+        r"\(IMPS\s+Ref#\s*(?P<ref>\w+)\)-SBI",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("SBI account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("sender").strip(),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="imps",
+            ),
+        )
+
+
 class SbiCcPaymentReceivedAlertParser(BaseSmsParser):
     """SBI Card bill-payment processed notification.
 
@@ -255,6 +312,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # account-credit shapes.
     SbiCcPaymentReceivedAlertParser(),
     SbiAccountCreditAlertParser(),
+    # IMPS inbound credit: unique "linked to mobile ... (IMPS Ref# ...)"
+    # anchor; cannot collide with the "transfer from ... Ref No" shape.
+    SbiAccountImpsCreditAlertParser(),
 )
 
 
