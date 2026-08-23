@@ -11,6 +11,7 @@ from bank_sms_parser.parsers.indusind import IndusindParser
 from bank_sms_parser.parsers.jupiter import JupiterParser
 from bank_sms_parser.parsers.kotak import KotakParser
 from bank_sms_parser.parsers.onecard import OnecardParser
+from bank_sms_parser.parsers.revolut import RevolutParser
 from bank_sms_parser.parsers.sbi import SbiParser
 from bank_sms_parser.parsers.slice import SliceParser
 
@@ -25,6 +26,7 @@ PARSERS: dict[str, type[BankSmsParser]] = {
     "jupiter": JupiterParser,
     "kotak": KotakParser,
     "onecard": OnecardParser,
+    "revolut": RevolutParser,
     "sbi": SbiParser,
     "slice": SliceParser,
 }

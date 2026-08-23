@@ -1672,6 +1672,24 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 8, 21),
             },
         ),
+        # Revolut wallet UPI credit: a payment into the prepaid wallet. No
+        # account mask (payment-received alert). The payer is the counterparty;
+        # the new balance and the body time are carried.
+        (
+            "revolut",
+            "revolut/upi_credit.txt",
+            {
+                "email_type": "revolut_upi_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("1234.50"),
+                "currency": "INR",
+                "counterparty": "Sample Payer",
+                "balance": Decimal("5678.90"),
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 5, 15),
+                "transaction_time": datetime.time(15, 30),
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
