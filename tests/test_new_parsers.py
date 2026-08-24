@@ -1690,12 +1690,37 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(15, 30),
             },
         ),
+        # Revolut wallet debit: money left the prepaid wallet. No payee and no
+        # channel are named, so counterparty and channel stay unset. The
+        # balance is a bare integer (₹0), and the body time is carried.
+        (
+            "revolut",
+            "revolut/debit.txt",
+            {
+                "email_type": "revolut_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("2500.00"),
+                "currency": "INR",
+                "counterparty": None,
+                "channel": None,
+                "balance": Decimal("0"),
+                "transaction_date": datetime.date(2026, 8, 24),
+                "transaction_time": datetime.time(14, 13),
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
     body = _read(fixture)
     result = parse_sms(bank, body)
     _assert_matches(result, expected)
+
+
+def test_revolut_debit_identifies_by_none() -> None:
+    """The debit alert names no counterparty, card, or reference, so it must
+    tell the consumer it identifies by none, not the default counterparty."""
+    result = parse_sms("revolut", _read("revolut/debit.txt"))
+    assert result.identifies_by == "none"
 
 
 def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
