@@ -17,15 +17,22 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
         "HSBC creditcard xxxxx0000 used at SampleMerchant for INR 100.00 on
          01/07/26.Limit Rs 200.00 Due Rs 50.00.Report fraud on +910000000000"
 
-    The card mask is a run of lowercase ``x`` followed by the last digits
-    (``xxxxx0000``). ``used at`` marks the debit and introduces the merchant.
-    ``Limit Rs`` is the available credit limit, stored in ``balance`` (mirrors
-    the ICICI/Axis ``Avl Limit`` convention); the trailing ``Due Rs`` is the
-    running statement outstanding and has no model field, so it is dropped.
-    The date is ``DD/MM/YY`` (``dayfirst`` handles it).
+    Newer template (August 2026)::
 
-    ``Limit Rs`` is required, not optional: every real HSBC spend alert carries
-    it, so its absence signals a truncated/foreign body that must not parse.
+        "HSBC Credit Card xx0000 used at SampleMerchant for INR 100.00 on
+         01/08/26. Avl limit INR 200.00; due INR 50.00. Call +910000000000
+         to report fraud."
+
+    The card mask is a run of lowercase ``x`` followed by the last digits
+    (``xxxxx0000`` or ``xx0000``). ``used at`` marks the debit and introduces
+    the merchant. The limit clause (``Limit Rs`` or ``Avl limit INR``) is the
+    available credit limit, stored in ``balance``; the trailing ``due``
+    figure is the running statement outstanding and has no model field, so
+    it is dropped. The date is ``DD/MM/YY`` (``dayfirst`` handles it).
+
+    The limit clause is required, not optional: every real HSBC spend alert
+    carries it, so its absence signals a truncated/foreign body that must not
+    parse.
     """
 
     bank = "hsbc"
@@ -35,7 +42,7 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
         r"HSBC\s+credit\s*card\s+(?P<card>x+\d{4})\s+used\s+at\s+"
         r"(?P<merchant>.+?)\s+for\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"on\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b"
-        r".*?\bLimit\s+Rs\.?\s*(?P<limit>[\d,]+(?:\.\d+)?)",
+        r".*?\bLimit\s+(?:Rs\.?|INR)\s*(?P<limit>[\d,]+(?:\.\d+)?)",
         re.IGNORECASE,
     )
 

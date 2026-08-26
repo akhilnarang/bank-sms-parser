@@ -763,6 +763,24 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 7, 1),
             },
         ),
+        # HSBC spend, August 2026 template: "Credit Card xx####" mask, a space
+        # after the date, and "Avl limit INR ...; due INR ..." instead of
+        # "Limit Rs ... Due Rs ...". Same fields, same email_type.
+        (
+            "hsbc",
+            "hsbc/cc_spend_variant2.txt",
+            {
+                "email_type": "hsbc_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("100.00"),
+                "currency": "INR",
+                "card_mask": "xx0000",
+                "counterparty": "SampleMerchant Store",
+                "balance": Decimal("99999.99"),
+                "channel": "card",
+                "transaction_date": datetime.date(2026, 8, 1),
+            },
+        ),
         # HSBC credit-card payment received: "we have received a payment of
         # INR ... for credit card ending ####" with a bare-digit card mask and
         # a DD-MON-YY date. Mirrors the equitas cc_payment convention:
