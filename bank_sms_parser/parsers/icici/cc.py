@@ -76,15 +76,21 @@ class IciciCcTransactionAlertParser(BaseSmsParser):
 class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
     """ICICI credit-card bill-payment-received notification.
 
-    Sample:
+    ICICI sends two bodies for this event. The first body uses "Rs", the
+    mask "XX0000", and names the payment rail:
         "Payment of Rs 50,000.00 has been received on your ICICI Bank
          Credit Card XX0000 through Bharat Bill Payment System on 21-MAY-26."
 
-    Money is credited to the card (it reduces the outstanding balance), so
-    this is emitted as a ``credit``. Mirrors the axis/idfc
-    ``cc_payment_received`` convention: card_mask + date only, no
-    counterparty/balance. The payment rail ("through ...") is optional so a
-    rail-less variant still matches.
+    The second body uses "INR", the words "Credit Card Account", the mask
+    "4xxx0000", and no rail. The text ".Thank you." follows the date with
+    no space:
+        "Dear Customer, Payment of INR 1,234.00 has been received on your
+         ICICI Bank Credit Card Account 4xxx0000 on 06-SEP-26.Thank you."
+
+    The payment reduces the card balance, so the parser emits a credit.
+    The body names no merchant and no balance. The parser keeps the card
+    mask as the bank wrote it. The consumer normalizes masks before it
+    compares them.
     """
 
     bank = "icici"
@@ -94,10 +100,11 @@ class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
     identifies_by = "card_mask"
 
     _PATTERN = re.compile(
-        r"Payment\s+of\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"Payment\s+of\s+(?:Rs\.?|INR)\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"has\s+been\s+received\s+on\s+your\s+"
-        r"ICICI\s+Bank\s+Credit\s+Card\s+(?P<card>XX\d+)\s+"
-        r"(?:through\s+.+?\s+)?on\s+(?P<date>\d{1,2}-\w+-\d{2})"
+        r"ICICI\s+Bank\s+Credit\s+Card\s+(?:Account\s+)?"
+        r"(?P<card>XX\d+|\d[xX]+\d{4})\s+"
+        r"(?:through\s+.+?\s+)?on\s+(?P<date>\d{1,2}-\w+-\d{2})\b"
     )
 
     def parse(

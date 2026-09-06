@@ -745,6 +745,21 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 5, 21),
             },
         ),
+        # ICICI CC bill-payment received, second template: "INR" amount,
+        # "Credit Card Account" with a first-digit mask, no payment rail,
+        # and ".Thank you." glued to the date.
+        (
+            "icici",
+            "icici/cc_payment_received_1507.txt",
+            {
+                "email_type": "icici_cc_payment_received_alert",
+                "direction": "credit",
+                "amount": Decimal("1234.00"),
+                "currency": "INR",
+                "card_mask": "4xxx0000",
+                "transaction_date": datetime.date(2026, 9, 6),
+            },
+        ),
         # HSBC credit-card spend: lowercase "xxxxx####" card mask, "used at"
         # merchant, "for INR", DD/MM/YY date, and "Limit Rs" available credit
         # limit stored in balance (the trailing "Due Rs" outstanding is dropped).
