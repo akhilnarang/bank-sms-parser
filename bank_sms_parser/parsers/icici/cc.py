@@ -80,6 +80,11 @@ class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
     mask "XX0000", and names the payment rail:
         "Payment of Rs 50,000.00 has been received on your ICICI Bank
          Credit Card XX0000 through Bharat Bill Payment System on 21-MAY-26."
+        "Dear Customer, Payment of INR 5.00 has been received on your ICICI
+         Bank Credit Card Account 4xxx0000 on 06-SEP-26.Thank you."
+
+    The second wording adds the word "Account" and masks the card as
+    ``4xxx0000`` (leading BIN digit, lowercase x) instead of ``XX0000``.
 
     The second body uses "INR", the words "Credit Card Account", the mask
     "4xxx0000", and no rail. The text ".Thank you." follows the date with
@@ -127,5 +132,63 @@ class IciciCcPaymentReceivedAlertParser(BaseSmsParser):
                 ),
                 transaction_date=parse_date(match.group("date")),
                 card_mask=match.group("card"),
+            ),
+        )
+
+
+class IciciCcRefundAlertParser(BaseSmsParser):
+    """ICICI credit-card merchant refund alert.
+
+    Sample:
+        "SAMPLE MERCHANT refund of Rs 2.00 credited to ICICI Bank Credit
+         Card XX0000 on 06-SEP-26. Revised total due Rs 99,999.00,
+         minimum due Rs 4,999.00"
+
+    A refund credits the card, so ``direction`` is ``credit``. The
+    merchant leads the body, before the word "refund".
+
+    ICICI prefixes some messages with "Dear Customer,". The merchant
+    capture starts after that prefix. It matches the greeting by name and
+    not by the comma, because a merchant name can hold a comma
+    ("SAMPLEVENDOR, INC").
+
+    The body states the revised total due, not an available limit or an
+    account balance. That number is the new outstanding, so the parser
+    does not put it in ``balance``. The statement carries the outstanding.
+    """
+
+    bank = "icici"
+    email_type = "icici_cc_refund_alert"
+
+    _PATTERN = re.compile(
+        r"^(?:Dear\s+Customer,\s*)?(?P<merchant>.+?)\s+refund\s+of\s+(?:Rs\.?|INR)\s*"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+credited\s+to\s+"
+        r"ICICI\s+Bank\s+Credit\s+Card\s+(?:Account\s+)?"
+        r"(?P<card>XX\d+|\d[xX]+\d{4})\s+on\s+(?P<date>\d{1,2}-\w+-\d{2})\b",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI CC refund pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
             ),
         )

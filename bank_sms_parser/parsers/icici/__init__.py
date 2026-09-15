@@ -15,6 +15,7 @@ from bank_sms_parser.parsers.icici.account import (
 )
 from bank_sms_parser.parsers.icici.cc import (
     IciciCcPaymentReceivedAlertParser,
+    IciciCcRefundAlertParser,
     IciciCcTransactionAlertParser,
 )
 
@@ -34,6 +35,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     IciciAccountTransactionAlertParser(),
     IciciCcTransactionAlertParser(),
     IciciCcPaymentReceivedAlertParser(),
+    # After the spend parser: a refund body also says "Credit Card", but
+    # only the refund body says "refund of Rs ... credited to".
+    IciciCcRefundAlertParser(),
 )
 
 
@@ -60,6 +64,7 @@ __all__ = [
     "IciciAccountTransactionAlertParser",
     "IciciAccountUpiCreditAlertParser",
     "IciciCcPaymentReceivedAlertParser",
+    "IciciCcRefundAlertParser",
     "IciciCcTransactionAlertParser",
     "IciciParser",
     "parse",

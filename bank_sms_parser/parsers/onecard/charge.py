@@ -13,6 +13,9 @@ Python's stdlib ``re`` module (see spec §6 OneCard notes).
 
 Variant 3 carries a 3-letter ISO currency code (real example: USD); the
 other two are INR by convention.
+
+The card mask has two styles: "ending in XX0000" and a bare "xxXX0000".
+The phrase "ending in" is thus optional.
 """
 
 import datetime
@@ -35,17 +38,17 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
     _BILL_CLEARED = re.compile(
         r"Your\s+bill\s+of\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"at\s+(?P<merchant>.+?)\s+has\s+been\s+cleared\s+with\s+your\s+"
-        r"BOBCARD\s+One\s+Credit\s+Card\s+ending\s+in\s+(?P<card>XX\d+)"
+        r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
     )
     _SPENT = re.compile(
         r"You've\s+spent\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"at\s+(?P<merchant>.+?)\s+with\s+your\s+"
-        r"BOBCARD\s+One\s+Credit\s+Card\s+ending\s+in\s+(?P<card>XX\d+)"
+        r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
     )
     _PAID_FOREIGN = re.compile(
         r"You've\s+paid\s+(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"at\s+(?P<merchant>.+?)\s+with\s+your\s+"
-        r"BOBCARD\s+One\s+Credit\s+Card\s+ending\s+in\s+(?P<card>XX\d+)"
+        r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
     )
 
     _PATTERNS_INR = (_BILL_CLEARED, _SPENT)

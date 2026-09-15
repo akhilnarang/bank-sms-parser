@@ -1005,10 +1005,13 @@ class HdfcAccountTransferDebitAlertParser(BaseSmsParser):
 class HdfcAccountNeftDebitAlertParser(BaseSmsParser):
     """Parse an HDFC online banking NEFT debit.
 
-    Example:
+    Two wordings share this shape:
         "Amt Deducted! Rs.12345.67 from your HDFC Bank A/c XX0000 for
          NEFT txn via HDFC Bank Online Banking Not you?Call 00000000000/
          SMS BLOCK OB to 0000000000"
+        "Amt Deducted! Rs.12345.67 from your HDFC Bank A/c XX0000 for
+         NEFT transaction via HDFC Bank Online Banking Not you?Call
+         00000000000/SMS BLOCK OB to 0000000000"
 
     The message does not contain a beneficiary, reference number, balance,
     or transaction time. If ``received_at`` is available, convert it from UTC
@@ -1030,7 +1033,7 @@ class HdfcAccountNeftDebitAlertParser(BaseSmsParser):
     _PATTERN = re.compile(
         r"Amt\s+Deducted!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"from\s+your\s+HDFC\s+Bank\s+A/c\s+(?P<account>XX\d+)\s+"
-        r"for\s+NEFT\s+txn\s+via\s+HDFC\s+Bank\s+Online\s+Banking\s+"
+        r"for\s+NEFT\s+(?:txn|transaction)\s+via\s+HDFC\s+Bank\s+Online\s+Banking\s+"
         r"Not\s+you\?\s*Call\s+\d+/SMS\s+BLOCK\s+OB\s+to\s+\d+\s*$",
         re.IGNORECASE,
     )

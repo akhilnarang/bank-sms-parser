@@ -421,15 +421,25 @@ class SliceAccountImpsCreditAlertParser(BaseSmsParser):
 class SliceCcTransactionAlertParser(BaseSmsParser):
     """slice credit-card spend alert.
 
-    Sample:
+    Two wordings share this shape:
         "Rs. 100.00 spent on your credit card xx0000 at MERCHANT on
          12-May-26 (UPI Ref: 000000000000). Not you? Call 080-0000-0000
+         - slice"
+        "USD 12.34 | Rs. 1,000.00 spent on your credit card xx0000 at
+         MERCHANT NEW YORK US on 07-Sep-26. Not you? Call 080-0000-0000
          - slice"
 
     The body carries amount, card mask, merchant, an in-body date, and a
     UPI reference number. Direction is ``debit``; channel defaults to
     ``card`` (the spend is reported as the CC spend, the UPI ref is the
     payment instrument used at the merchant).
+
+    A foreign-currency spend leads with the amount that the merchant
+    charges, then the INR amount that the card bills. The parser takes the
+    INR amount, because the card bills in INR and the ledger holds INR. It
+    puts the foreign amount in ``raw_description``, which keeps the
+    original charge for debugging. The foreign shape carries no UPI
+    reference, so ``reference_number`` stays ``None``.
     """
 
     bank = "slice"
@@ -443,6 +453,15 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
         re.IGNORECASE,
     )
 
+    # Foreign-currency spend: "<CCY> <amt> | Rs. <inr> spent on your credit
+    # card ...". No UPI reference in this wording.
+    _FOREIGN_PATTERN = re.compile(
+        r"(?P<currency>[A-Z]{3})\s+(?P<foreign_amount>[\d,]+(?:\.\d+)?)\s*\|\s*"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+on\s+your\s+"
+        r"credit\s+card\s+(?P<card>xx\d+)\s+at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})"
+    )
+
     def parse(
         self,
         body: str,
@@ -451,7 +470,13 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if not (match := self._PATTERN.search(text)):
+        raw: str | None = None
+        if match := self._FOREIGN_PATTERN.search(text):
+            raw = f"{match.group('currency')} {match.group('foreign_amount')}"
+            ref = None
+        elif match := self._PATTERN.search(text):
+            ref = match.group("ref")
+        else:
             raise ParseError("slice CC transaction alert pattern did not match")
         return ParsedSms(
             email_type=self.email_type,
@@ -463,9 +488,10 @@ class SliceCcTransactionAlertParser(BaseSmsParser):
                 ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("merchant").strip(),
-                reference_number=match.group("ref"),
+                reference_number=ref,
                 card_mask=match.group("card"),
                 channel="card",
+                raw_description=raw,
             ),
         )
 

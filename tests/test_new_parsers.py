@@ -1266,6 +1266,120 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": None,
             },
         ),
+        # Kotak UPI debit, long wording ("Kotak Bank A/c", numeric date,
+        # "UPI Ref").
+        (
+            "kotak",
+            "kotak/account_upi_debit.txt",
+            {
+                "email_type": "kotak_account_upi_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("500.00"),
+                "currency": "INR",
+                "account_mask": "X0000",
+                "counterparty": "SampleCo Services Ind",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 9, 10),
+                "transaction_time": None,
+            },
+        ),
+        # Kotak UPI debit, short wording (bare mask, month-name date,
+        # "UPI ref no."). Same email_type as the long wording.
+        (
+            "kotak",
+            "kotak/account_upi_debit_short.txt",
+            {
+                "email_type": "kotak_account_upi_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("9.00"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "counterparty": "SampleRide",
+                "reference_number": "000000000001",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 9, 8),
+            },
+        ),
+        # HDFC NEFT debit, "NEFT transaction" wording. The bank also sends
+        # "NEFT txn"; both are one email_type.
+        (
+            "hdfc",
+            "hdfc/account_neft_debit_transaction_wording.txt",
+            {
+                "email_type": "hdfc_account_neft_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("99999.99"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "channel": "neft",
+            },
+        ),
+        # ICICI CC merchant refund. The merchant leads the body. The
+        # "Revised total due" is the new outstanding, not a balance.
+        (
+            "icici",
+            "icici/cc_refund.txt",
+            {
+                "email_type": "icici_cc_refund_alert",
+                "direction": "credit",
+                "amount": Decimal("2.00"),
+                "currency": "INR",
+                "card_mask": "XX0000",
+                "counterparty": "SAMPLE MERCHANT AI",
+                "channel": "card",
+                "transaction_date": datetime.date(2026, 9, 6),
+            },
+        ),
+        # slice CC foreign spend: the card bills INR, so the ledger amount
+        # is INR. The foreign charge goes to raw_description, which a
+        # separate test checks. This wording carries no UPI reference.
+        (
+            "slice",
+            "slice/cc_spend_foreign.txt",
+            {
+                "email_type": "slice_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("1000.00"),
+                "currency": "INR",
+                "card_mask": "xx0000",
+                "counterparty": "SAMPLEVENDOR, INC NEW YORK US",
+                "reference_number": None,
+                "channel": "card",
+                "transaction_date": datetime.date(2026, 9, 7),
+            },
+        ),
+        # OneCard foreign charge with the bare "xxXX0000" mask (no
+        # "ending in"). USD stays USD, as in the "ending in" variant.
+        (
+            "onecard",
+            "onecard/cc_charge_paid_usd_bare_mask.txt",
+            {
+                "email_type": "onecard_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("42.50"),
+                "currency": "USD",
+                "card_mask": "xxXX0000",
+                "counterparty": "SampleCloud",
+                "channel": "card",
+            },
+        ),
+        # IDFC monthly savings interest. Its own email_type, because
+        # interest is income and not a transfer.
+        (
+            "idfc",
+            "idfc/account_interest_credit.txt",
+            {
+                "email_type": "idfc_account_interest_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("1000.00"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "balance": Decimal("999999.99"),
+                "channel": "interest",
+                "transaction_date": datetime.date(2026, 8, 31),
+            },
+        ),
         # Jupiter Edge CC payment messages do not contain a date or card mask.
         # A separate test checks the received_at value.
         (
@@ -2225,3 +2339,140 @@ def test_kotak_dc_spend_declares_that_the_time_comes_from_arrival() -> None:
         received_at=datetime.datetime(2026, 7, 16, 10, 24, 4, tzinfo=datetime.UTC),
     )
     assert result.event_time_source == "message_arrival"
+
+
+def test_kotak_processed_confirmation_carries_no_transaction() -> None:
+    """The bare "processed successfully" SMS must open no ledger row.
+
+    The body states no direction. A made-up direction would reach the
+    consumer, which suppresses a notify-only role only for a credit. A
+    made-up debit would thus pass that gate and put a phantom row in the
+    ledger for a transfer that other messages already record.
+    """
+    parsed = parse_sms("kotak", _read("kotak/account_transaction_processed.txt"))
+    assert parsed.email_type == "kotak_account_transaction_processed_alert"
+    assert parsed.transaction is None
+
+
+def test_kotak_processed_confirmation_still_recognizes_the_shape() -> None:
+    """The parser must claim the shape, or it stays in the error queue."""
+    parsed = parse_sms("kotak", _read("kotak/account_transaction_processed.txt"))
+    assert parsed.bank == "kotak"
+
+
+def test_kotak_processed_confirmation_rejects_another_shape() -> None:
+    """The anchor must need the full "processed successfully" frame."""
+    with pytest.raises(ParseError):
+        parse_sms("kotak", "Your transaction for INR 10000.00 is pending.")
+
+
+def test_kotak_upi_debit_takes_the_time_from_received_at() -> None:
+    """The body gives a date but no time, so the time comes from arrival."""
+    received = datetime.datetime(2026, 9, 10, 5, 0, 0, tzinfo=datetime.UTC)
+    txn = parse_sms(
+        "kotak",
+        _read("kotak/account_upi_debit.txt"),
+        received_at=received,
+    ).transaction
+    assert txn is not None
+    # 05:00:00 UTC is 10:30:00 IST.
+    assert txn.transaction_time == datetime.time(10, 30, 0)
+    assert txn.transaction_date == datetime.date(2026, 9, 10)
+
+
+def test_kotak_upi_debit_rejects_a_body_without_the_fraud_text() -> None:
+    """The fraud text prevents a match with an OTP or a partial message."""
+    with pytest.raises(ParseError):
+        parse_sms(
+            "kotak",
+            "Sent Rs.500.00 from Kotak Bank A/c X0000 to SampleCo on 10-09-26.",
+        )
+
+
+def test_slice_foreign_spend_bills_inr_and_keeps_the_foreign_charge() -> None:
+    """The card bills INR, so the ledger amount is INR.
+
+    The foreign charge stays in raw_description, so the original amount
+    survives for debugging.
+    """
+    txn = parse_sms("slice", _read("slice/cc_spend_foreign.txt")).transaction
+    assert txn is not None
+    assert txn.amount.amount == Decimal("1000.00")
+    assert txn.amount.currency == "INR"
+    assert txn.raw_description == "USD 12.00"
+
+
+def test_slice_inr_spend_keeps_its_upi_reference() -> None:
+    """The INR wording carries a UPI reference; the foreign wording does not."""
+    txn = parse_sms("slice", _read("slice/cc_spend.txt")).transaction
+    assert txn is not None
+    assert txn.reference_number is not None
+    assert txn.raw_description is None
+
+
+def test_icici_cc_refund_does_not_put_the_total_due_in_balance() -> None:
+    """ "Revised total due" is the new outstanding, not an available balance."""
+    txn = parse_sms("icici", _read("icici/cc_refund.txt")).transaction
+    assert txn is not None
+    assert txn.balance is None
+
+
+def test_icici_cc_payment_received_accepts_both_mask_styles() -> None:
+    """ "XX0000" and "Credit Card Account 4xxx0000" are one email_type."""
+    for fixture, mask in (
+        ("icici/cc_payment_received.txt", "XX0000"),
+        ("icici/cc_payment_received_1507.txt", "4xxx0000"),
+    ):
+        parsed = parse_sms("icici", _read(fixture))
+        assert parsed.email_type == "icici_cc_payment_received_alert"
+        assert parsed.transaction is not None
+        assert parsed.transaction.card_mask == mask
+
+
+@pytest.mark.parametrize(
+    "date_text, expected",
+    [
+        ("10-09-26", datetime.date(2026, 9, 10)),
+        ("08-Sep-26", datetime.date(2026, 9, 8)),
+        ("1-9-26", datetime.date(2026, 9, 1)),
+        ("10/09/26", datetime.date(2026, 9, 10)),
+    ],
+)
+def test_kotak_upi_debit_reads_every_known_date_style(
+    date_text: str, expected: datetime.date
+) -> None:
+    """The bank writes the date several ways, so the parser accepts them all."""
+    body = (
+        f"Sent Rs.100.00 from XX0000 to SampleCo on {date_text}. "
+        "UPI Ref 000000000000. Not you? Tap https://kotak.bank.in/KBANKT/Fraud"
+    )
+    txn = parse_sms("kotak", body).transaction
+    assert txn is not None
+    assert txn.transaction_date == expected
+
+
+def test_icici_cc_refund_reads_a_merchant_holding_a_comma() -> None:
+    """A real merchant name can hold a comma ("SAMPLEVENDOR, INC")."""
+    body = (
+        "SAMPLEVENDOR, INC refund of Rs 2.00 credited to ICICI Bank Credit "
+        "Card XX0000 on 06-SEP-26. Revised total due Rs 99,999.00, minimum "
+        "due Rs 4,999.00"
+    )
+    txn = parse_sms("icici", body).transaction
+    assert txn is not None
+    assert txn.counterparty == "SAMPLEVENDOR, INC"
+
+
+def test_icici_cc_refund_drops_the_greeting_from_the_merchant() -> None:
+    """ICICI prefixes some bodies with "Dear Customer,".
+
+    The greeting must not become part of the merchant name.
+    """
+    body = (
+        "Dear Customer, SAMPLE MERCHANT refund of Rs 2.00 credited to "
+        "ICICI Bank Credit Card XX0000 on 06-SEP-26. Revised total due "
+        "Rs 99,999.00, minimum due Rs 4,999.00"
+    )
+    txn = parse_sms("icici", body).transaction
+    assert txn is not None
+    assert txn.counterparty == "SAMPLE MERCHANT"

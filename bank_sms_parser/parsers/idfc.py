@@ -806,6 +806,65 @@ class IdfcAccountCreditAlertParser(BaseSmsParser):
         )
 
 
+class IdfcAccountInterestCreditAlertParser(BaseSmsParser):
+    """IDFC FIRST savings-account monthly interest credit.
+
+    Sample:
+        "Monthly interest of INR.1,234.00 earned on your Savings A/c
+         XX0000 has been credited to your A/C on 31/08/26. New bal:
+         INR.9,99,999.99. IDFC FIRST Bank"
+
+    The bank pays interest on the account, so ``direction`` is ``credit``.
+    The payer is the bank itself, so the body names no counterparty.
+
+    This shape gets its own ``email_type``. Interest is income, not a
+    transfer, and the consumer must categorise it as income. A generic
+    credit type would hide that.
+
+    The body writes the amount as ``INR.1,234.00``, with a full stop after
+    the currency code. The body gives a date but no time.
+    """
+
+    bank = "idfc"
+    email_type = "idfc_account_interest_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Monthly\s+interest\s+of\s+INR\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"earned\s+on\s+your\s+Savings\s+A/c\s+(?P<account>X+\d+)\s+"
+        r"has\s+been\s+credited\s+to\s+your\s+A/C\s+"
+        r"on\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\.\s*"
+        r"New\s+bal:\s*INR\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("IDFC account interest credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                account_mask=match.group("account"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                channel="interest",
+            ),
+        )
+
+
 class IdfcAsbaNoticeStubParser(BaseSmsParser):
     """Recognize-and-skip parser for IDFC IPO ASBA lifecycle notices.
 
@@ -898,6 +957,10 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # load-bearing.
     IdfcAccountImpsOutwardAlertParser(),
     IdfcAccountImpsCreditAlertParser(),
+    # Monthly interest credit: unique "Monthly interest of INR ... earned on
+    # your Savings A/c" anchor. Before the generic credit parser, which the
+    # interest body would otherwise not reach anyway.
+    IdfcAccountInterestCreditAlertParser(),
     IdfcAccountBalanceCreditAlertParser(),
     IdfcAccountCreditAlertParser(),
     # ASBA lifecycle stub last, so it can never shadow a real parser.
