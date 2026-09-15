@@ -710,11 +710,21 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
     email_type = "hdfc_account_upi_debit_alert"
 
     _PATTERN = re.compile(
-        r"Sent\s+Rs\.(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"Sent\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"From\s+HDFC\s+Bank\s+A/C\s+\*?(?P<account>\d+)\s+"
         r"To\s+(?P<payee>.+?)\s+"
         r"On\s+(?P<date>\d{2}/\d{2}/\d{2})\s+"
-        r"Ref\s+(?P<ref>\d+)"
+        r"Ref\s+(?P<ref>\d+)",
+        re.IGNORECASE,
+    )
+
+    _MANDATE_PATTERN = re.compile(
+        r"UPI\s+Mandate:\s*Sent\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"From\s+HDFC\s+Bank\s+A/C\s+\*?(?P<account>\d+)\s+"
+        r"To\s+(?P<payee>.+?)\s+"
+        r"(?P<date>\d{2}/\d{2}/\d{2})\s+"
+        r"Ref\s+(?P<ref>\d+)",
+        re.IGNORECASE,
     )
 
     _IMPS_SEND_PATTERN = re.compile(
@@ -751,7 +761,7 @@ class HdfcAccountUpiDebitAlertParser(BaseSmsParser):
                     account_mask=match.group("account"),
                 ),
             )
-        if match := self._PATTERN.search(text):
+        if match := self._PATTERN.search(text) or self._MANDATE_PATTERN.search(text):
             channel = "imps" if self._IMPS_HINT.search(text) else "upi"
             return ParsedSms(
                 email_type=self.email_type,
@@ -1278,6 +1288,52 @@ class HdfcRtgsMoneyDepositedParser(BaseSmsParser):
         )
 
 
+class HdfcAccountUpiTransferDebitAlertParser(BaseSmsParser):
+    """HDFC account-to-account UPI transfer debit alert.
+
+    Sample::
+
+        "HDFC Bank:Rs. 1.00 debited from a/c *1234 on 07/09/26 to a/c **5678
+         (UPI Ref No. 000000000000). Not you? Call on 18002586161 to report"
+    """
+
+    bank = "hdfc"
+    email_type = "hdfc_account_upi_transfer_debit_alert"
+
+    _PATTERN = re.compile(
+        r"HDFC\s+Bank:Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+debited\s+from\s+a/c\s+"
+        r"(?P<account>\*?\d+)\s+on\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\s+to\s+a/c\s+"
+        r"(?P<dest>\*+\d+)\s+\(UPI\s+Ref\s+No\.?\s*(?P<ref>\d+)\)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("HDFC account UPI transfer debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"a/c {match.group('dest')}",
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="upi",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcDcTransactionAlertParser(),
     # DC reversal has a unique "Transaction Reversed!" banner; grouped with
@@ -1306,6 +1362,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     HdfcAccountCreditAlertParser(),
     HdfcAccountImpsOutwardAlertParser(),
     HdfcAccountUpiDebitAlertParser(),
+    HdfcAccountUpiTransferDebitAlertParser(),
     HdfcAccountTransferDebitAlertParser(),
     HdfcAccountNeftDebitAlertParser(),
     # RTGS "initiated" outward debit: unique "RTGS ... initiated:" anchor, so

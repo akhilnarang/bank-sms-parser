@@ -1695,6 +1695,21 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": None,
             },
         ),
+        (
+            "hdfc",
+            "hdfc/account_upi_transfer_debit.txt",
+            {
+                "email_type": "hdfc_account_upi_transfer_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("1.00"),
+                "currency": "INR",
+                "account_mask": "*1234",
+                "counterparty": "a/c **5678",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 9, 7),
+            },
+        ),
         # HDFC net-banking payee transfer debit. The bank names no rail, so the
         # channel is "online". The SMS carries no payee, reference, balance, or
         # in-body date.
