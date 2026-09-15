@@ -14,6 +14,7 @@ from bank_sms_parser.parsers.onecard import OnecardParser
 from bank_sms_parser.parsers.revolut import RevolutParser
 from bank_sms_parser.parsers.sbi import SbiParser
 from bank_sms_parser.parsers.slice import SliceParser
+from bank_sms_parser.parsers.union import UnionParser
 
 PARSERS: dict[str, type[BankSmsParser]] = {
     "axis": AxisParser,
@@ -29,6 +30,7 @@ PARSERS: dict[str, type[BankSmsParser]] = {
     "revolut": RevolutParser,
     "sbi": SbiParser,
     "slice": SliceParser,
+    "union": UnionParser,
 }
 
 __all__ = ["PARSERS"]
