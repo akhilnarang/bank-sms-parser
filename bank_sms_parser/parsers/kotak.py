@@ -5,6 +5,8 @@ Supported SMS types:
 - kotak_account_upi_debit_alert: UPI payment sent from the account
 - kotak_account_transaction_processed_alert: Bare "processed successfully"
   confirmation. It states no direction, so it carries no transaction.
+- kotak_account_upi_credit_alert: Inbound account UPI credit alert
+- kotak_account_imps_credit_alert: Inbound account IMPS credit alert
 """
 
 import datetime
@@ -219,10 +221,118 @@ class KotakAccountTransactionProcessedAlertParser(BaseSmsParser):
         )
 
 
+class KotakAccountUpiCreditAlertParser(BaseSmsParser):
+    """Parse a Kotak Mahindra Bank account inbound UPI credit alert.
+
+    Sample (account-bearing template):
+        "Received Rs.50.00 in your Kotak Bank AC 1234 from RAHUL SHARMA on
+         19-08-26.UPI Ref:000000000000"
+
+    Sample (Kotak811 template):
+        "Received Rs.100.00 from RAHUL SHARMA in your Kotak811 a/c XX1234 on
+         03-Sep-26. UPI ref no. 000000000000.
+         View balance: https://kotak.bank.in/KBANKT/Fraud -Kotak"
+    """
+
+    bank = "kotak"
+    email_type = "kotak_account_upi_credit_alert"
+
+    _PATTERN_A = re.compile(
+        r"Received\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+in\s+your\s+Kotak\s+Bank\s+AC\s+"
+        r"(?P<account>[X\d]+)\s+from\s+(?P<payer>.+?)\s+on\s+"
+        r"(?P<date>\d{1,2}-\d{1,2}-\d{2,4})\.\s*UPI\s+Ref:\s*(?P<ref>\d+)",
+        re.IGNORECASE,
+    )
+
+    _PATTERN_B = re.compile(
+        r"Received\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+(?P<payer>.+?)\s+"
+        r"in\s+your\s+Kotak811\s+a/c\s+(?P<account>[X\d]+)\s+on\s+"
+        r"(?P<date>\d{1,2}-[A-Za-z]{3}-\d{2,4})\.\s*UPI\s+ref\s+no\.\s*(?P<ref>\d+)\.\s*"
+        r"View\s+balance:\s*\S+\s+-Kotak",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        match = self._PATTERN_A.search(text) or self._PATTERN_B.search(text)
+        if not match:
+            raise ParseError("Kotak account UPI credit pattern did not match")
+
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("payer").strip() or None,
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="upi",
+            ),
+        )
+
+
+class KotakAccountImpsCreditAlertParser(BaseSmsParser):
+    """Parse a Kotak Mahindra Bank account inbound IMPS credit alert.
+
+    Sample:
+        "Received Rs. 3001.00 on 14-09-26 in your Kotak Bank A/C x1234 by an
+         A/C linked to mobile x000. IMPS Ref no 000000000000."
+    """
+
+    bank = "kotak"
+    email_type = "kotak_account_imps_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Received\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
+        r"(?P<date>\d{1,2}-\d{1,2}-\d{2,4})\s+in\s+your\s+"
+        r"Kotak\s+Bank\s+A/C\s+(?P<account>[xX\d]+)\s+by\s+an\s+A/C\s+linked\s+to\s+mobile\s+"
+        r"(?P<mobile>[xX\d]+)\.\s+IMPS\s+Ref\s+no\s+(?P<ref>\d+)\.?",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Kotak account IMPS credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=f"Mobile {match.group('mobile')}",
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="imps",
+            ),
+        )
+
+
 _PARSERS = (
     KotakDcTransactionAlertParser(),
     KotakAccountUpiDebitAlertParser(),
     KotakAccountTransactionProcessedAlertParser(),
+    KotakAccountUpiCreditAlertParser(),
+    KotakAccountImpsCreditAlertParser(),
 )
 
 
