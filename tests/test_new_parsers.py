@@ -1827,6 +1827,21 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(15, 2, 16),
             },
         ),
+        (
+            "icici",
+            "icici/account_credit_from_payer.txt",
+            {
+                "email_type": "icici_account_credit_from_payer_alert",
+                "direction": "credit",
+                "amount": Decimal("7000.00"),
+                "currency": "INR",
+                "account_mask": "1234",
+                "counterparty": "RAHUL SHARMA",
+                "reference_number": "000000000000",
+                "transaction_date": datetime.date(2026, 8, 19),
+                "transaction_time": datetime.time(12, 0, 27),
+            },
+        ),
         # IDFC inbound NEFT credit: the credit counterpart of the outward NEFT
         # debit, using the same "credited with Rs. ... Info: NEFT/<utr>/<name>.
         # New bal:" frame as the RTGS credit but with the NEFT rail token.

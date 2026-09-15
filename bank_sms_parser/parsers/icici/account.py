@@ -468,3 +468,51 @@ class IciciAccountNeftCompletionAlertParser(BaseSmsParser):
                 channel="neft",
             ),
         )
+
+
+class IciciAccountCreditFromPayerAlertParser(BaseSmsParser):
+    """ICICI account inbound credit alert naming the remitter and exact time.
+
+    Sample::
+
+        "Your ICICI Bank Account 1234 has been credited with Rs 7000.00 on
+         2026-08-19 at 12:00:27 from RAHUL SHARMA. Ref No 000000000000."
+    """
+
+    bank = "icici"
+    email_type = "icici_account_credit_from_payer_alert"
+
+    _PATTERN = re.compile(
+        r"Your\s+ICICI\s+Bank\s+Account\s+(?P<account>[X\d]+)\s+has\s+been\s+credited\s+with\s+"
+        r"Rs\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
+        r"(?P<date>\d{4}-\d{2}-\d{2})\s+at\s+(?P<time>\d{1,2}:\d{2}:\d{2})\s+"
+        r"from\s+(?P<payer>.+?)\.\s*Ref\s+No\s+(?P<ref>[A-Za-z0-9]+)\.?",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("ICICI account credit from payer pattern did not match")
+        txn_dt = parse_datetime(f"{match.group('date')} {match.group('time')}")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_dt.date(),
+                transaction_time=txn_dt.time(),
+                counterparty=match.group("payer").strip() or None,
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+            ),
+        )

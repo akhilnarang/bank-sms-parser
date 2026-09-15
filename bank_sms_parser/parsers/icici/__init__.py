@@ -5,6 +5,7 @@ import datetime
 from bank_sms_parser.models import ParsedSms
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsers.icici.account import (
+    IciciAccountCreditFromPayerAlertParser,
     IciciAccountCreditInfoAlertParser,
     IciciAccountDebitInfoAlertParser,
     IciciAccountImpsCreditAlertParser,
@@ -24,6 +25,7 @@ from bank_sms_parser.parsers.icici.cc import (
 # "Payment of Rs ... received on your ICICI Bank Credit Card"), so order is
 # mostly insurance.
 _PARSERS: tuple[BaseSmsParser, ...] = (
+    IciciAccountCreditFromPayerAlertParser(),
     IciciAccountUpiCreditAlertParser(),
     IciciAccountImpsCreditAlertParser(),
     IciciAccountMandateDebitAlertParser(),
