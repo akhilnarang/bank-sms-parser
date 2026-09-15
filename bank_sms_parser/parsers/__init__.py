@@ -9,6 +9,7 @@ from bank_sms_parser.parsers.hdfc import HdfcParser
 from bank_sms_parser.parsers.hsbc import HsbcParser
 from bank_sms_parser.parsers.icici import IciciParser
 from bank_sms_parser.parsers.idfc import IdfcParser
+from bank_sms_parser.parsers.indian_bank import IndianBankParser
 from bank_sms_parser.parsers.indusind import IndusindParser
 from bank_sms_parser.parsers.jupiter import JupiterParser
 from bank_sms_parser.parsers.kotak import KotakParser
@@ -27,6 +28,7 @@ PARSERS: dict[str, type[BankSmsParser]] = {
     "hsbc": HsbcParser,
     "icici": IciciParser,
     "idfc": IdfcParser,
+    "indian_bank": IndianBankParser,
     "indusind": IndusindParser,
     "jupiter": JupiterParser,
     "kotak": KotakParser,
