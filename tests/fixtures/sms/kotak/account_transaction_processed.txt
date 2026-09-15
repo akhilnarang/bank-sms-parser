@@ -1,0 +1,1 @@
+Your transaction for INR 10000.00 against txn ID 000000000002 has been processed successfully. -Kotak
