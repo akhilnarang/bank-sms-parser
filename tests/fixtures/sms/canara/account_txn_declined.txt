@@ -1,0 +1,1 @@
+Dear Customer, txn of Rs.637.70 thru A/C XX1234 on 18-8-26 at 14:16:16 to ACME STORE failed due to INSUFFICIENT FUNDS-Canara Bank

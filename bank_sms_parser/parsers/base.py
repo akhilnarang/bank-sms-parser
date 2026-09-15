@@ -27,7 +27,8 @@ class BaseSmsParser(ABC):
     Set ``identifies_by`` to ``card_mask`` when the message reports a payment
     of the card bill and gives the card mask. Set it to ``none`` when the
     bank sends no field that shows which event the message reports. See
-    ``ParsedSms`` for what the consumer does with each value.
+    ``ParsedSms`` for what the consumer does with each value. Override
+    ``identifies_by_for`` only when this varies within one SMS shape.
     """
 
     bank: str
@@ -77,6 +78,12 @@ class BaseSmsParser(ABC):
     ) -> ParsedSms:
         """Parse a single SMS body into a ParsedSms or raise ParseError."""
         ...
+
+    def identifies_by_for(
+        self, result: ParsedSms
+    ) -> Literal["counterparty", "card_mask", "none"]:
+        """Return identification metadata for one parsed message."""
+        return self.identifies_by
 
 
 class BankSmsParser:
@@ -157,7 +164,7 @@ def parse_with_parsers(
             # model. Copy it across so the caller does not need to know which
             # class matched.
             result.event_time_source = parser.event_time_source
-            result.identifies_by = parser.identifies_by
+            result.identifies_by = parser.identifies_by_for(result)
         except (ParseError, ParserStubError) as exc:
             if isinstance(exc, ParserStubError):
                 recognized_stubs.add(parser.email_type)

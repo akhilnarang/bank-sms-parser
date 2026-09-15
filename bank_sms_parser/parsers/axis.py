@@ -170,10 +170,109 @@ class AxisCcReversalAlertParser(BaseSmsParser):
         )
 
 
+class AxisAccountUpiDebitAlertParser(BaseSmsParser):
+    """Axis account outbound UPI debit alert.
+
+    Sample::
+
+        "INR 726.00 debited A/c no. XX1234 05-09-26, 10:19:49 UPI/P2M/000000000000/RAHUL
+         SHARMA Not you? SMS BLOCKUPI Cust ID to 919900000000 Axis Bank"
+    """
+
+    bank = "axis"
+    email_type = "axis_account_upi_debit_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+debited\s+A/c\s+no\.\s+(?P<account>XX\d+)\s+"
+        r"(?P<datetime>\d{1,2}-\d{1,2}-\d{2,4},\s+\d{1,2}:\d{2}:\d{2})\s+"
+        r"(?:IST\s+)?UPI/(?:P2M|P2A)/(?P<ref>\d+)/(?P<payee>.+?)\s+"
+        r"Not\s+you\?\s*SMS\s+BLOCKUPI",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Axis account UPI debit pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("payee").strip() or None,
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="upi",
+            ),
+        )
+
+
+class AxisAccountUpiCreditAlertParser(BaseSmsParser):
+    """Axis account inbound UPI credit alert.
+
+    Sample::
+
+        "INR 1500.00 credited A/c no. XX1234 30-08-26, 20:20:52 IST
+         UPI/P2A/000000000000/RAHUL SHARMA/BANK/UPI - Axis Bank"
+    """
+
+    bank = "axis"
+    email_type = "axis_account_upi_credit_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+credited\s+A/c\s+no\.\s+(?P<account>XX\d+)\s+"
+        r"(?P<datetime>\d{1,2}-\d{1,2}-\d{2,4},\s+\d{1,2}:\d{2}:\d{2})\s+"
+        r"(?:IST\s+)?UPI/(?:P2M|P2A)/(?P<ref>\d+)/(?P<payer>[^/]+?)/[^/]+/.+?\s*-\s*Axis\s+Bank",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Axis account UPI credit pattern did not match")
+        dt = parse_datetime(match.group("datetime"))
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=match.group("payer").strip() or None,
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="upi",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     AxisCcPaymentReceivedParser(),
     AxisCcTransactionAlertParser(),
     AxisCcReversalAlertParser(),
+    AxisAccountUpiDebitAlertParser(),
+    AxisAccountUpiCreditAlertParser(),
 )
 
 

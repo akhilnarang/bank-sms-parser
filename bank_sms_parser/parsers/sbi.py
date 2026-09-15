@@ -82,8 +82,8 @@ class SbiAccountCreditAlertParser(BaseSmsParser):
     email_type = "sbi_account_credit_alert"
 
     _PATTERN = re.compile(
-        r"Dear\s+SBI\s+User,\s+your\s+A/c\s+"
-        r"(?P<account>X\d+)-credited\s+by\s+"
+        r"Dear\s+(?:SBI|UPI)\s+User,\s+your\s+A/c\s+"
+        r"(?P<account>X+\d+)-credited\s+by\s+"
         r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+"
         r"(?P<date>\S+)\s+transfer\s+from\s+"
         r"(?P<sender>.+?)\s+Ref\s+No\s+"
