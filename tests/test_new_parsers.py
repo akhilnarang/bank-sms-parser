@@ -1963,6 +1963,51 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(14, 16, 16),
             },
         ),
+        (
+            "bob",
+            "bob/account_upi_credit.txt",
+            {
+                "email_type": "bob_account_upi_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("15179.00"),
+                "currency": "INR",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 8, 19),
+                "transaction_time": datetime.time(14, 10, 8),
+            },
+        ),
+        (
+            "bob",
+            "bob/account_upi_credit_with_balance.txt",
+            {
+                "email_type": "bob_account_upi_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("50000.00"),
+                "currency": "INR",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "balance": Decimal("80509.13"),
+                "transaction_date": datetime.date(2026, 9, 3),
+                "transaction_time": datetime.time(10, 47, 14),
+            },
+        ),
+        (
+            "bob",
+            "bob/account_upi_debit.txt",
+            {
+                "email_type": "bob_account_upi_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("230.00"),
+                "currency": "INR",
+                "account_mask": "XXXXXX1234",
+                "counterparty": "example@okbank",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "balance": Decimal("618.85"),
+                "transaction_date": datetime.date(2026, 9, 6),
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
@@ -2339,6 +2384,19 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
             "ICICI BANK NEFT Transaction with reference number IN00000000000000 "
             "for Rs. 1.00 has been credited to the beneficiary account on "
             "21-08-2026 at 15:02:16 - later reversed",
+        ),
+        # BOB informational notices and upcoming mandates are not completed transactions.
+        (
+            "bob",
+            "Your request to set UPI PIN on UPI app has failed. If it is not you kindly contact your bank on helpline no. 1800-5700 immediately -BOB",
+        ),
+        (
+            "bob",
+            "For upcoming mandate set for 2026-09-10 10:00:00 AM ,your A/C will be debited with 100.00 towards MERCHANT for the Autopay, RRN 123456789012 -BOB",
+        ),
+        (
+            "bob",
+            "We got a request for linking your account for UPI 1234. If its not you kindly contact your bank on helpline no. 1800-5700 immediately -BOB",
         ),
     ],
 )
