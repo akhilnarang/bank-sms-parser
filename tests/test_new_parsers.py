@@ -1041,6 +1041,38 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "channel": "card",
             },
         ),
+        (
+            "axis",
+            "axis/account_upi_debit.txt",
+            {
+                "email_type": "axis_account_upi_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("726.00"),
+                "currency": "INR",
+                "account_mask": "XX1234",
+                "counterparty": "RAHUL SHARMA",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 9, 5),
+                "transaction_time": datetime.time(10, 19, 49),
+            },
+        ),
+        (
+            "axis",
+            "axis/account_upi_credit.txt",
+            {
+                "email_type": "axis_account_upi_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("1500.00"),
+                "currency": "INR",
+                "account_mask": "XX1234",
+                "counterparty": "RAHUL SHARMA",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 8, 30),
+                "transaction_time": datetime.time(20, 20, 52),
+            },
+        ),
         # HDFC credit-card-on-UPI spend — same `hdfc_cc_transaction_alert`
         # event as the POS spend, distinguished by channel="upi"; carries the
         # payee VPA + UPI ref. The "On DD-MM" date has no year/time, so date
