@@ -2,6 +2,7 @@
 
 from bank_sms_parser.parsers.axis import AxisParser
 from bank_sms_parser.parsers.base import BankSmsParser
+from bank_sms_parser.parsers.canara import CanaraParser
 from bank_sms_parser.parsers.equitas import EquitasParser
 from bank_sms_parser.parsers.hdfc import HdfcParser
 from bank_sms_parser.parsers.hsbc import HsbcParser
@@ -18,6 +19,7 @@ from bank_sms_parser.parsers.union import UnionParser
 
 PARSERS: dict[str, type[BankSmsParser]] = {
     "axis": AxisParser,
+    "canara": CanaraParser,
     "equitas": EquitasParser,
     "hdfc": HdfcParser,
     "hsbc": HsbcParser,
