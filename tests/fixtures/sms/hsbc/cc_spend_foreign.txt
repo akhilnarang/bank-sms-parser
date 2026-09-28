@@ -1,0 +1,1 @@
+HSBC Credit Card xx0000 used at SampleMerchant Store for EUR 100.00 on 01/09/26. Avl limit INR 99999.99; due INR 50.00. Call +910000000000 to report fraud.

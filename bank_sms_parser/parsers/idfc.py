@@ -71,15 +71,16 @@ class IdfcCcTransactionAlertParser(BaseSmsParser):
     ``A/C``/``A/c`` clauses) or the CC payment-received shape. The merchant
     is the counterparty, the in-body ``DD MON YYYY at HH:MM AM/PM`` stamp
     supplies date + time, and the ``Avbl Limit: INR ...`` trailer is surfaced
-    as ``balance``. Amounts carry an ``INR`` prefix, so ``parse_money`` is
-    used. ``channel="card"``; ``direction="debit"``.
+    as ``balance``. The amount carries a currency prefix, so ``parse_money``
+    is used. A foreign spend keeps its currency (``SGD 100.00``); the limit
+    is always INR. ``channel="card"``; ``direction="debit"``.
     """
 
     bank = "idfc"
     email_type = "idfc_cc_transaction_alert"
 
     _PATTERN = re.compile(
-        r"(?P<amount>INR\s+[\d,]+(?:\.\d+)?)\s+spent\s+on\s+your\s+"
+        r"(?P<amount>[A-Z]{3}\s+[\d,]+(?:\.\d+)?)\s+spent\s+on\s+your\s+"
         r"IDFC\s+FIRST\s+Bank\s+Credit\s+Card\s+ending\s+(?P<card>X+\d+)\s+"
         r"at\s+(?P<merchant>.+?)\s+"
         r"on\s+(?P<datetime>\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}\s+at\s+"

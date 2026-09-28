@@ -30,6 +30,10 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
     figure is the running statement outstanding and has no model field, so
     it is dropped. The date is ``DD/MM/YY`` (``dayfirst`` handles it).
 
+    A foreign spend states the amount in the purchase currency
+    (``for EUR 100.00``). The parser keeps that currency. The limit is
+    always INR.
+
     The limit clause is required, not optional: every real HSBC spend alert
     carries it, so its absence signals a truncated/foreign body that must not
     parse.
@@ -40,9 +44,11 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
 
     _PATTERN = re.compile(
         r"HSBC\s+credit\s*card\s+(?P<card>x+\d{4})\s+used\s+at\s+"
-        r"(?P<merchant>.+?)\s+for\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
-        r"on\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b"
-        r".*?\bLimit\s+(?:Rs\.?|INR)\s*(?P<limit>[\d,]+(?:\.\d+)?)",
+        r"(?P<merchant>.+?)\s+for\s+(?P<currency>INR|(?-i:[A-Z]{3}))\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        # The limit clause must follow the date. A merchant name that holds
+        # "for XXX 200 on 01/02/26" then cannot pass as the purchase.
+        r"on\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\.\s*"
+        r"(?:Avl\s+)?Limit\s+(?:Rs\.?|INR)\s*(?P<limit>[\d,]+(?:\.\d+)?)",
         re.IGNORECASE,
     )
 
@@ -62,7 +68,8 @@ class HsbcCcTransactionAlertParser(BaseSmsParser):
             transaction=SmsTransactionAlert(
                 direction="debit",
                 amount=Money(
-                    amount=parse_amount(match.group("amount")), currency="INR"
+                    amount=parse_amount(match.group("amount")),
+                    currency=match.group("currency").upper(),
                 ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("merchant").strip(),

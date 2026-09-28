@@ -246,6 +246,18 @@ def _assert_matches(parsed, expected: dict) -> None:
         ),
         (
             "idfc",
+            "idfc/cc_spend_foreign.txt",
+            {
+                "email_type": "idfc_cc_transaction_alert",
+                "amount": Decimal("100.00"),
+                "currency": "SGD",
+                "counterparty": "SAMPLE MERCHANT",
+                "balance": Decimal("99999.9"),
+                "transaction_date": datetime.date(2026, 9, 1),
+            },
+        ),
+        (
+            "idfc",
             "idfc/account_spend.txt",
             {
                 "email_type": "idfc_account_transaction_alert",
@@ -794,6 +806,20 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "balance": Decimal("99999.99"),
                 "channel": "card",
                 "transaction_date": datetime.date(2026, 8, 1),
+            },
+        ),
+        # HSBC foreign spend: the amount is in the purchase currency; the
+        # limit stays INR.
+        (
+            "hsbc",
+            "hsbc/cc_spend_foreign.txt",
+            {
+                "email_type": "hsbc_cc_transaction_alert",
+                "amount": Decimal("100.00"),
+                "currency": "EUR",
+                "counterparty": "SampleMerchant Store",
+                "balance": Decimal("99999.99"),
+                "transaction_date": datetime.date(2026, 9, 1),
             },
         ),
         # HSBC credit-card payment received: "we have received a payment of
@@ -2749,6 +2775,17 @@ def test_slice_foreign_spend_bills_inr_and_keeps_the_foreign_charge() -> None:
     assert txn.amount.amount == Decimal("1000.00")
     assert txn.amount.currency == "INR"
     assert txn.raw_description == "USD 12.00"
+
+
+def test_hsbc_spend_does_not_read_a_merchant_word_as_a_currency() -> None:
+    body = _read("hsbc/cc_spend_variant2.txt").replace(
+        "SampleMerchant Store", "SHOP FOR THE 200 on 02/08/26. ROAD"
+    )
+
+    txn = parse_sms("hsbc", body).transaction
+
+    assert txn.amount.currency == "INR"
+    assert txn.amount.amount == Decimal("100.00")
 
 
 def test_slice_inr_spend_keeps_its_upi_reference() -> None:
