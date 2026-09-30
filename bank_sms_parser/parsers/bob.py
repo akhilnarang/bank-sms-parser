@@ -3,6 +3,7 @@
 Supported SMS types:
 - bob_account_upi_debit_alert: Outbound account UPI debit alert
 - bob_account_upi_credit_alert: Inbound account UPI credit alert
+- bob_cc_transaction_alert: BOBCARD credit card spend alert
 """
 
 import datetime
@@ -137,9 +138,60 @@ class BobAccountUpiCreditAlertParser(BaseSmsParser):
         )
 
 
+class BobCcTransactionAlertParser(BaseSmsParser):
+    """BOBCARD credit card spend alert.
+
+    Sample::
+
+        "ALERT: INR 1,000.00 is spent on your BOBCARD ending 0000 at Samplestore
+         on 30-09-2026. Available credit limit is Rs 99,000.00, Current
+         outstanding is Rs 0.00. Not you?  Call 18002090 (toll-free)"
+    """
+
+    bank = "bob"
+    email_type = "bob_cc_transaction_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+is\s+spent\s+on\s+your\s+BOBCARD\s+"
+        r"ending\s+(?P<card>\d{4})\s+at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{4})\.\s+"
+        r"Available\s+credit\s+limit\s+is\s+Rs\.?\s*(?P<balance>[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("BOBCARD spend pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     BobAccountUpiDebitAlertParser(),
     BobAccountUpiCreditAlertParser(),
+    BobCcTransactionAlertParser(),
 )
 
 

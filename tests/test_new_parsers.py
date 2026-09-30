@@ -2082,6 +2082,21 @@ def _assert_matches(parsed, expected: dict) -> None:
         ),
         (
             "bob",
+            "bob/cc_spend.txt",
+            {
+                "email_type": "bob_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("1000.00"),
+                "currency": "INR",
+                "card_mask": "0000",
+                "counterparty": "Samplestore",
+                "channel": "card",
+                "balance": Decimal("99000.00"),
+                "transaction_date": datetime.date(2026, 9, 30),
+            },
+        ),
+        (
+            "bob",
             "bob/account_upi_debit.txt",
             {
                 "email_type": "bob_account_upi_debit_alert",

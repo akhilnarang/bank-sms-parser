@@ -1,0 +1,1 @@
+ALERT: INR 1,000.00 is spent on your BOBCARD ending 0000 at Samplestore on 30-09-2026. Available credit limit is Rs 99,000.00, Current outstanding is Rs 0.00. Not you?  Call 18002090 (toll-free)
