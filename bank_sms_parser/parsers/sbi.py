@@ -187,10 +187,14 @@ class SbiAccountUpiDebitAlertParser(BaseSmsParser):
     16 characters. The reference is the UPI RRN. The fraud trailer is
     required, so a truncated or unrelated SBI message cannot match on an
     amount and an account alone.
+
+    The body has no time, and SBI sends the message at the moment of the
+    debit. Thus ``event_time_source`` is ``message_arrival``.
     """
 
     bank = "sbi"
     email_type = "sbi_account_upi_debit_alert"
+    event_time_source = "message_arrival"
 
     _PATTERN = re.compile(
         r"Dear\s+UPI\s+user\s+A/C\s+(?P<account>X+\d+)\s+"

@@ -291,12 +291,14 @@ def test_a_parser_cannot_declare_an_unknown_time_source() -> None:
                 raise NotImplementedError  # pragma: no cover
 
 
-def test_the_hdfc_neft_debit_parser_declares_message_arrival() -> None:
-    """This SMS has no time in the body, and HDFC sends it at the moment of
-    the transaction. The consumer needs this fact to trust the time less."""
+def test_debit_alerts_without_a_body_time_declare_message_arrival() -> None:
+    """These SMS have no time in the body, and the bank sends them at the
+    moment of the debit. The consumer needs this fact to trust the time less."""
     from bank_sms_parser.parsers.hdfc import HdfcAccountNeftDebitAlertParser
+    from bank_sms_parser.parsers.sbi import SbiAccountUpiDebitAlertParser
 
-    assert HdfcAccountNeftDebitAlertParser.event_time_source == "message_arrival"
+    for parser in (HdfcAccountNeftDebitAlertParser, SbiAccountUpiDebitAlertParser):
+        assert parser.event_time_source == "message_arrival"
 
 
 def test_a_subclass_cannot_escape_the_time_source_check() -> None:
