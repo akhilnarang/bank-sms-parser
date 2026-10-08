@@ -174,6 +174,60 @@ class SbiAccountImpsCreditAlertParser(BaseSmsParser):
         )
 
 
+class SbiAccountUpiDebitAlertParser(BaseSmsParser):
+    """SBI savings/current account outbound UPI debit.
+
+    Sample::
+
+        "Dear UPI user A/C X0000 debited by 100.00 on date 01Jan26 trf to
+         Sample Name Refno 000000000000 If not u? call-0000000000 for other
+         services-00000000-SBI"
+
+    The amount carries no currency prefix. The bank cuts the payee name at
+    16 characters. The reference is the UPI RRN. The fraud trailer is
+    required, so a truncated or unrelated SBI message cannot match on an
+    amount and an account alone.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_account_upi_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+UPI\s+user\s+A/C\s+(?P<account>X+\d+)\s+"
+        r"debited\s+by\s+(?:Rs\.?\s*)?(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+date\s+(?P<date>\d{1,2}[A-Za-z]{3}\d{2,4})\s+"
+        r"trf\s+to\s+(?P<payee>.+?)\s+Refno\s+(?P<ref>\d+)\s+"
+        r"If\s+not\s+u\?\s+call-?\d+\s+for\s+other\s+services-?\d+-SBI",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("SBI account UPI debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("payee").strip(),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+                channel="upi",
+            ),
+        )
+
+
 class SbiCcPaymentReceivedAlertParser(BaseSmsParser):
     """SBI Card bill-payment processed notification.
 
@@ -315,6 +369,8 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # IMPS inbound credit: unique "linked to mobile ... (IMPS Ref# ...)"
     # anchor; cannot collide with the "transfer from ... Ref No" shape.
     SbiAccountImpsCreditAlertParser(),
+    # UPI debit: unique "Dear UPI user A/C ... debited by" anchor.
+    SbiAccountUpiDebitAlertParser(),
 )
 
 

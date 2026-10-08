@@ -950,6 +950,21 @@ def _assert_matches(parsed, expected: dict) -> None:
             },
         ),
         (
+            "sbi",
+            "sbi/account_upi_debit.txt",
+            {
+                "email_type": "sbi_account_upi_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("100.00"),
+                "currency": "INR",
+                "account_mask": "X0000",
+                "counterparty": "Sample Name",
+                "reference_number": "000000000000",
+                "channel": "upi",
+                "transaction_date": datetime.date(2026, 1, 1),
+            },
+        ),
+        (
             "slice",
             "slice/cc_spend.txt",
             {
