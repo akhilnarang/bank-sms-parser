@@ -13,8 +13,8 @@ result = parse_sms(
     bank="hdfc",
     body="Spent Rs.3000 From HDFC Bank Card x0000 At MERCHANT On 2026-05-02:00:17:56 Bal Rs.142.26 ...",
 )
-print(result.email_type)            # "hdfc_dc_transaction_alert"
-print(result.transaction.amount)    # Money(amount=Decimal("3000"), currency="INR")
+print(result.email_type)  # "hdfc_dc_transaction_alert"
+print(result.transaction.amount)  # Money(amount=Decimal("3000"), currency="INR")
 ```
 
 ## CLI

@@ -24,6 +24,8 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 package = true
+# Only use releases that PyPI has served for three days.
+exclude-newer = "3 days"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bank_sms_parser"]

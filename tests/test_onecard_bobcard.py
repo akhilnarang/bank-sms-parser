@@ -159,9 +159,7 @@ class TestBobcardStubs:
             try:
                 stub.parse(_read(fixture))
             except _Stub as exc:
-                pytest.fail(
-                    f"statement-notice stub wrongly matched {fixture}: {exc}"
-                )
+                pytest.fail(f"statement-notice stub wrongly matched {fixture}: {exc}")
             except ParseError:
                 pass
 
@@ -180,9 +178,21 @@ class TestLegacyOneCrdRegression:
     @pytest.mark.parametrize(
         "fixture, amount, txn_date",
         [
-            ("cc_payment_received_10000.txt", Decimal("10000.00"), datetime.date(2026, 4, 29)),
-            ("cc_payment_received_1050.txt", Decimal("1050.00"), datetime.date(2026, 4, 28)),
-            ("cc_payment_received_1799.txt", Decimal("1799.94"), datetime.date(2026, 4, 25)),
+            (
+                "cc_payment_received_10000.txt",
+                Decimal("10000.00"),
+                datetime.date(2026, 4, 29),
+            ),
+            (
+                "cc_payment_received_1050.txt",
+                Decimal("1050.00"),
+                datetime.date(2026, 4, 28),
+            ),
+            (
+                "cc_payment_received_1799.txt",
+                Decimal("1799.94"),
+                datetime.date(2026, 4, 25),
+            ),
         ],
     )
     def test_hola_payment_received_still_wins(

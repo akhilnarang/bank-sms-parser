@@ -82,9 +82,7 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         if match := self._DC_PURCHASE_PATTERN.search(text):
             return self._build_dc_purchase(match, received_at)
 
-        raise ParseError(
-            "IndusInd account transaction alert: no known pattern matched"
-        )
+        raise ParseError("IndusInd account transaction alert: no known pattern matched")
 
     def _build_upi(
         self,
@@ -103,7 +101,9 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction=direction,
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 counterparty=match.group("vpa"),
@@ -123,7 +123,9 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction=direction,
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=f"Acct {match.group('dest')}/{match.group('dest_name').strip()}",
                 reference_number=match.group("ref"),
@@ -194,9 +196,7 @@ class IndusindAccountUpiCreditAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.search(text)):
-            raise ParseError(
-                "IndusInd account UPI credit alert: pattern did not match"
-            )
+            raise ParseError("IndusInd account UPI credit alert: pattern did not match")
 
         txn_date: datetime.date | None = None
         txn_time: datetime.time | None = None
@@ -260,9 +260,7 @@ class IndusindAccountUpiDebitAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.search(text)):
-            raise ParseError(
-                "IndusInd account UPI debit alert: pattern did not match"
-            )
+            raise ParseError("IndusInd account UPI debit alert: pattern did not match")
 
         txn_date: datetime.date | None = None
         txn_time: datetime.time | None = None
@@ -314,7 +312,9 @@ class IndusindAccountDcPurchaseAlertParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.search(text)):
-            raise ParseError("IndusInd account debit-card purchase pattern did not match")
+            raise ParseError(
+                "IndusInd account debit-card purchase pattern did not match"
+            )
         txn_date: datetime.date | None = None
         txn_time: datetime.time | None = None
         if received_at is not None:
@@ -326,11 +326,15 @@ class IndusindAccountDcPurchaseAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 channel="card",
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -592,5 +596,10 @@ class IndusindParser(BankSmsParser):
     parsers = _PARSERS
 
 
-def parse(body: str, *, sender: str | None = None, received_at: datetime.datetime | None = None) -> ParsedSms:
+def parse(
+    body: str,
+    *,
+    sender: str | None = None,
+    received_at: datetime.datetime | None = None,
+) -> ParsedSms:
     return IndusindParser().parse(body, sender=sender, received_at=received_at)

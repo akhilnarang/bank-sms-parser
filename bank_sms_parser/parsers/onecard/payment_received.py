@@ -44,7 +44,9 @@ class OnecardCcPaymentReceivedParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
             ),
         )

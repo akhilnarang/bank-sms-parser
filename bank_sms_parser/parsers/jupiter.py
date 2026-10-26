@@ -117,7 +117,9 @@ class JupiterCcTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant").strip(),
