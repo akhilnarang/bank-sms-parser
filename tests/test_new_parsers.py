@@ -1650,6 +1650,24 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 6, 11),
             },
         ),
+        # "CAM*<machine id>*CA" is a cash-machine deposit. The machine id is
+        # not a reference.
+        (
+            "icici",
+            "icici/account_credit_info_cam.txt",
+            {
+                "email_type": "icici_account_credit_info_alert",
+                "direction": "credit",
+                "amount": Decimal("11111.00"),
+                "currency": "INR",
+                "account_mask": "XX000",
+                "counterparty": "CAM*00000ABC*CA",
+                "reference_number": None,
+                "channel": "cash_deposit",
+                "balance": Decimal("22222.00"),
+                "transaction_date": datetime.date(2026, 1, 1),
+            },
+        ),
         # HDFC savings-to-PPF/SSY transfer debit; no in-body date, so
         # transaction_date is None without received_at.
         (
