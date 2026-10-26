@@ -37,9 +37,7 @@ def parse(
     received_at_dt = (
         datetime.datetime.fromisoformat(received_at) if received_at else None
     )
-    result = parse_sms(
-        bank, body_text, sender=sender, received_at=received_at_dt
-    )
+    result = parse_sms(bank, body_text, sender=sender, received_at=received_at_dt)
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, default=str))
 
 

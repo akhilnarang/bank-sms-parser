@@ -50,7 +50,9 @@ class IdfcCcPaymentReceivedParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 card_mask=match.group("card"),
             ),
@@ -144,10 +146,14 @@ class IdfcAccountBalanceDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_dt.date(),
                 transaction_time=txn_dt.time(),
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -310,7 +316,9 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=counterparty,
                 reference_number=reference_number,
@@ -359,12 +367,16 @@ class IdfcAccountRtgsDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("name").strip(),
                 reference_number=match.group("ref"),
                 channel="rtgs",
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -411,12 +423,16 @@ class IdfcAccountRtgsCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("name").strip(),
                 reference_number=match.group("ref"),
                 channel="rtgs",
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -462,12 +478,16 @@ class IdfcAccountNeftCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("name").strip(),
                 reference_number=match.group("ref"),
                 channel="neft",
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -513,12 +533,16 @@ class IdfcAccountNeftDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("name").strip(),
                 reference_number=match.group("ref"),
                 channel="neft",
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -572,7 +596,9 @@ class IdfcAccountNeftBeneficiaryCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 counterparty=match.group("name").strip(),
                 reference_number=match.group("ref"),
                 channel="neft",
@@ -630,7 +656,9 @@ class IdfcAccountImpsOutwardAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=f"Acct {match.group('dest')}",
                 reference_number=match.group("ref"),
@@ -669,7 +697,9 @@ class IdfcAccountImpsCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=f"Mobile {match.group('mobile')}",
                 reference_number=match.group("ref"),
@@ -708,10 +738,14 @@ class IdfcAccountBalanceCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=txn_dt.date(),
                 transaction_time=txn_dt.time(),
-                balance=Money(amount=parse_amount(match.group("balance")), currency="INR"),
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
                 account_mask=match.group("account"),
             ),
         )
@@ -918,8 +952,7 @@ class IdfcAsbaNoticeStubParser(BaseSmsParser):
     ) -> ParsedSms:
         text = normalize_whitespace(body)
         if not (
-            self._BLOCKED_PATTERN.search(text)
-            or self._UNBLOCKED_PATTERN.search(text)
+            self._BLOCKED_PATTERN.search(text) or self._UNBLOCKED_PATTERN.search(text)
         ):
             raise ParseError("IDFC ASBA notice: not an ASBA block/unblock shape")
         raise ParserStubError(
@@ -974,5 +1007,10 @@ class IdfcParser(BankSmsParser):
     parsers = _PARSERS
 
 
-def parse(body: str, *, sender: str | None = None, received_at: datetime.datetime | None = None) -> ParsedSms:
+def parse(
+    body: str,
+    *,
+    sender: str | None = None,
+    received_at: datetime.datetime | None = None,
+) -> ParsedSms:
     return IdfcParser().parse(body, sender=sender, received_at=received_at)

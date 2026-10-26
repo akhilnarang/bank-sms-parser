@@ -93,7 +93,9 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency=currency),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency=currency
+                ),
                 transaction_date=txn_date,
                 transaction_time=txn_time,
                 counterparty=match.group("merchant").strip(),

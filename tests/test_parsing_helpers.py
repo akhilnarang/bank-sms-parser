@@ -83,7 +83,9 @@ class TestReceivedAtToIst:
     def test_ist_input_returns_ist(self) -> None:
         from zoneinfo import ZoneInfo
 
-        already_ist = datetime.datetime(2026, 5, 2, 2, 30, tzinfo=ZoneInfo("Asia/Kolkata"))
+        already_ist = datetime.datetime(
+            2026, 5, 2, 2, 30, tzinfo=ZoneInfo("Asia/Kolkata")
+        )
         ist = received_at_to_ist(already_ist)
         assert ist.date() == datetime.date(2026, 5, 2)
         assert ist.time() == datetime.time(2, 30)
@@ -94,13 +96,16 @@ class TestReceivedAtToIst:
 
 
 class TestParseAmount:
-    @pytest.mark.parametrize("s, expected", [
-        ("1,604.00", Decimal("1604.00")),
-        ("99,99,999.99", Decimal("9999999.99")),  # Indian grouping
-        ("35437.00", Decimal("35437.00")),
-        ("3000", Decimal("3000")),
-        ("99,999.99", Decimal("99999.99")),
-    ])
+    @pytest.mark.parametrize(
+        "s, expected",
+        [
+            ("1,604.00", Decimal("1604.00")),
+            ("99,99,999.99", Decimal("9999999.99")),  # Indian grouping
+            ("35437.00", Decimal("35437.00")),
+            ("3000", Decimal("3000")),
+            ("99,999.99", Decimal("99999.99")),
+        ],
+    )
     def test_bare_numeric(self, s: str, expected: Decimal) -> None:
         assert parse_amount(s) == expected
 
@@ -114,16 +119,19 @@ class TestParseAmount:
 
 
 class TestParseMoney:
-    @pytest.mark.parametrize("s, amount, currency", [
-        ("Rs.3000", Decimal("3000"), "INR"),
-        ("Rs 3000", Decimal("3000"), "INR"),
-        ("Rs. 1.00", Decimal("1.00"), "INR"),
-        ("INR 15000", Decimal("15000"), "INR"),
-        ("INR. 99,999.99", Decimal("99999.99"), "INR"),
-        ("USD 106.20", Decimal("106.20"), "USD"),
-        ("EUR 50.00", Decimal("50.00"), "EUR"),
-        ("GBP 10", Decimal("10"), "GBP"),
-    ])
+    @pytest.mark.parametrize(
+        "s, amount, currency",
+        [
+            ("Rs.3000", Decimal("3000"), "INR"),
+            ("Rs 3000", Decimal("3000"), "INR"),
+            ("Rs. 1.00", Decimal("1.00"), "INR"),
+            ("INR 15000", Decimal("15000"), "INR"),
+            ("INR. 99,999.99", Decimal("99999.99"), "INR"),
+            ("USD 106.20", Decimal("106.20"), "USD"),
+            ("EUR 50.00", Decimal("50.00"), "EUR"),
+            ("GBP 10", Decimal("10"), "GBP"),
+        ],
+    )
     def test_with_prefix(self, s: str, amount: Decimal, currency: str) -> None:
         m = parse_money(s)
         assert m == Money(amount=amount, currency=currency)
@@ -158,13 +166,16 @@ class TestNormalizeWhitespace:
 
 
 class TestExtractCardMask:
-    @pytest.mark.parametrize("body, expected", [
-        ("HDFC Bank Card x0000 At MERCHANT", "x0000"),
-        ("ICICI Bank Card XX0000 on", "XX0000"),
-        ("ending in XX0000.", "XX0000"),
-        ("Card ending XX0000", "XX0000"),
-        ("Credit Card XX0000 on", "XX0000"),
-    ])
+    @pytest.mark.parametrize(
+        "body, expected",
+        [
+            ("HDFC Bank Card x0000 At MERCHANT", "x0000"),
+            ("ICICI Bank Card XX0000 on", "XX0000"),
+            ("ending in XX0000.", "XX0000"),
+            ("Card ending XX0000", "XX0000"),
+            ("Credit Card XX0000 on", "XX0000"),
+        ],
+    )
     def test_matches(self, body: str, expected: str) -> None:
         assert extract_card_mask(body) == expected
 
@@ -173,11 +184,14 @@ class TestExtractCardMask:
 
 
 class TestExtractAccountMask:
-    @pytest.mark.parametrize("body, expected", [
-        ("Acct XX000 debited", "XX000"),
-        ("A/C *XX0000 credited", "XX0000"),
-        ("Account XX1234 has been", "XX1234"),
-    ])
+    @pytest.mark.parametrize(
+        "body, expected",
+        [
+            ("Acct XX000 debited", "XX000"),
+            ("A/C *XX0000 credited", "XX0000"),
+            ("Account XX1234 has been", "XX1234"),
+        ],
+    )
     def test_matches(self, body: str, expected: str) -> None:
         assert extract_account_mask(body) == expected
 

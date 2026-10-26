@@ -47,7 +47,9 @@ class AxisCcPaymentReceivedParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 card_mask=match.group("card"),
             ),
@@ -99,7 +101,9 @@ class AxisCcTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant").strip(),
@@ -157,7 +161,9 @@ class AxisCcReversalAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 counterparty=match.group("merchant").strip(),
@@ -281,5 +287,10 @@ class AxisParser(BankSmsParser):
     parsers = _PARSERS
 
 
-def parse(body: str, *, sender: str | None = None, received_at: datetime.datetime | None = None) -> ParsedSms:
+def parse(
+    body: str,
+    *,
+    sender: str | None = None,
+    received_at: datetime.datetime | None = None,
+) -> ParsedSms:
     return AxisParser().parse(body, sender=sender, received_at=received_at)

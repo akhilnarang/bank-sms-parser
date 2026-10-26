@@ -143,7 +143,9 @@ class IciciAccountTransactionAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=counterparty,
                 reference_number=match.group("ref"),
@@ -181,7 +183,9 @@ class IciciAccountUpiCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("payer").strip(),
                 reference_number=match.group("ref"),
@@ -238,7 +242,9 @@ class IciciAccountImpsCreditAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=f"Mobile {match.group('mobile')}",
                 reference_number=match.group("ref"),
@@ -294,7 +300,9 @@ class IciciAccountDebitInfoAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=info.counterparty,
                 reference_number=info.reference_number,
@@ -353,7 +361,9 @@ class IciciAccountCreditInfoAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="credit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=info.counterparty,
                 reference_number=info.reference_number,
@@ -402,7 +412,9 @@ class IciciAccountMandateDebitAlertParser(BaseSmsParser):
             bank=self.bank,
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=match.group("merchant").strip(),
                 reference_number=match.group("ref"),
@@ -461,7 +473,9 @@ class IciciAccountNeftCompletionAlertParser(BaseSmsParser):
             ledger_role="completion",
             transaction=SmsTransactionAlert(
                 direction="debit",
-                amount=Money(amount=parse_amount(match.group("amount")), currency="INR"),
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
                 transaction_date=dt.date(),
                 transaction_time=dt.time(),
                 reference_number=match.group("ref"),

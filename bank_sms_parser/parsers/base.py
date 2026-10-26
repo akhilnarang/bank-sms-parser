@@ -42,8 +42,10 @@ class BaseSmsParser(ABC):
         # abstract intermediate. A class that defines only event_time_source
         # must still get a check. Without it, a wrong value goes to the
         # consumer, and the consumer reads that value as "body".
-        if not (cls.__dict__.keys()
-            & {"bank", "email_type", "event_time_source", "identifies_by"}):
+        if not (
+            cls.__dict__.keys()
+            & {"bank", "email_type", "event_time_source", "identifies_by"}
+        ):
             return
         bank = getattr(cls, "bank", None)
         email_type = getattr(cls, "email_type", None)
