@@ -55,10 +55,9 @@ _NEFT_INFO = re.compile(
 _FD_INFO = re.compile(r"^\s*TRF\s+TO\s+FD\b", re.IGNORECASE)
 _FD_LABEL = "ICICI FD"
 
-# A cash deposit at a Cash Acceptance Machine ("CAM*<machine id>*CA"). The
-# token after CAM is the machine id, not a transaction reference. Every deposit
-# at that machine carries it, so it must not be the reference.
-_CAM_INFO = re.compile(r"^\s*CAM\*", re.IGNORECASE)
+# A cash deposit at a Cash Acceptance Machine: "CAM*<machine id>*CA". The
+# machine id repeats on every deposit at that machine, so it is no reference.
+_CAM_INFO = re.compile(r"CAM\*[A-Z0-9]+\*CA", re.IGNORECASE)
 
 
 def _classify_info(descriptor: str) -> _InfoFields:
@@ -76,6 +75,12 @@ def _classify_info(descriptor: str) -> _InfoFields:
     Returns:
         The channel, reference, and counterparty of the descriptor.
     """
+    if _CAM_INFO.fullmatch(descriptor.strip()):
+        return _InfoFields(
+            channel="cash_deposit",
+            reference_number=None,
+            counterparty=descriptor.strip(),
+        )
     segments = re.split(r"[\s*\-]", descriptor.strip())
     channel: str | None = None
     for segment in segments:
@@ -85,9 +90,6 @@ def _classify_info(descriptor: str) -> _InfoFields:
     ref_match = _REF_TOKEN.search(descriptor)
     reference_number = ref_match.group(0) if ref_match else None
     counterparty = descriptor.strip() or None
-    if _CAM_INFO.match(descriptor):
-        channel = "cash_deposit"
-        reference_number = None
     if _FD_INFO.search(descriptor):
         counterparty = _FD_LABEL
     elif neft_match := _NEFT_INFO.fullmatch(descriptor.strip()):
