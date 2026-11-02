@@ -27,13 +27,15 @@ class _InfoFields(NamedTuple):
 # descriptor is the narration ICICI puts after ``Info``; its prefix names the
 # rail (``RTGS*ICICR120``, ``RTGS-HDFCR5...-``, ``BIL*INFT*<ref>*``).
 # ``INFT`` is ICICI's internal-funds-transfer marker, surfaced as imps.
-_INFO_CHANNELS = {
-    "RTGS": "rtgs",
-    "NEFT": "neft",
-    "IMPS": "imps",
-    "INFT": "imps",
-    "UPI": "upi",
-}
+_INFO_CHANNELS: frozendict[str, str] = frozendict(
+    {
+        "RTGS": "rtgs",
+        "NEFT": "neft",
+        "IMPS": "imps",
+        "INFT": "imps",
+        "UPI": "upi",
+    }
+)
 
 # A clear reference token: an alphanumeric run with at least one letter and one
 # digit (e.g. ICICR000, HDFCR0000000000, FFF0000000), 6+ chars. This avoids
