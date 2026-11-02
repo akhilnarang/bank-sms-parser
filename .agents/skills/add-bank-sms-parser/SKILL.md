@@ -146,7 +146,7 @@ gave us (IST-converted), or leave the field `None`.
   customer names `Customer` (`Hi Akhil` → `Hi Customer`); fake
   merchants like `SampleSubs Monthly`. Anonymize VPAs, phone
   numbers, and bank short-links the same way.
-- Python is 3.14+. Do **not** "fix" parenthesis-free multi-except
+- Python is 3.15+. Do **not** "fix" parenthesis-free multi-except
   syntax (PEP 758) — see `AGENTS.md`.
 
 ## Final check
