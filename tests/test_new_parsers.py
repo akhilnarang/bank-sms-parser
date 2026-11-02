@@ -2265,6 +2265,23 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 9, 14),
             },
         ),
+        (
+            "yesbank",
+            "yesbank/account_cheque_deposit.txt",
+            {
+                "email_type": "yesbank_account_cheque_deposit_alert",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "counterparty": "CHQ DEP SAMPLEBANK 14-OCT-26 SAMPLE BRANCH CUSTOMER NAME",
+                "balance": Decimal("23456.78"),
+                "transaction_date": datetime.date(2026, 10, 15),
+                "transaction_time": datetime.time(10, 20, 30),
+                "channel": "cheque",
+                "reference_number": None,
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
@@ -2654,6 +2671,13 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
         (
             "bob",
             "We got a request for linking your account for UPI 1234. If its not you kindly contact your bank on helpline no. 1800-5700 immediately -BOB",
+        ),
+        # Yes Bank cheque deposit truncated before the closing balance period.
+        (
+            "yesbank",
+            "INR 12,345.00 credited to A/c XX0000 towards CHQ DEP SAMPLEBANK "
+            "14-OCT-26 SAMPLE BRANCH CUSTOMER NAME Value 15-OCT-2026 10:20:30 . "
+            "Clear Bal is INR 23,456.78",
         ),
     ],
 )

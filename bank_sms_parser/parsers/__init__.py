@@ -18,6 +18,7 @@ from bank_sms_parser.parsers.revolut import RevolutParser
 from bank_sms_parser.parsers.sbi import SbiParser
 from bank_sms_parser.parsers.slice import SliceParser
 from bank_sms_parser.parsers.union import UnionParser
+from bank_sms_parser.parsers.yesbank import YesbankParser
 
 PARSERS: frozendict[str, type[BankSmsParser]] = frozendict(
     {
@@ -38,6 +39,7 @@ PARSERS: frozendict[str, type[BankSmsParser]] = frozendict(
         "sbi": SbiParser,
         "slice": SliceParser,
         "union": UnionParser,
+        "yesbank": YesbankParser,
     }
 )
 
