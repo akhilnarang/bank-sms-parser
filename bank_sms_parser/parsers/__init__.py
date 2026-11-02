@@ -19,24 +19,26 @@ from bank_sms_parser.parsers.sbi import SbiParser
 from bank_sms_parser.parsers.slice import SliceParser
 from bank_sms_parser.parsers.union import UnionParser
 
-PARSERS: dict[str, type[BankSmsParser]] = {
-    "axis": AxisParser,
-    "bob": BobParser,
-    "canara": CanaraParser,
-    "equitas": EquitasParser,
-    "hdfc": HdfcParser,
-    "hsbc": HsbcParser,
-    "icici": IciciParser,
-    "idfc": IdfcParser,
-    "indian_bank": IndianBankParser,
-    "indusind": IndusindParser,
-    "jupiter": JupiterParser,
-    "kotak": KotakParser,
-    "onecard": OnecardParser,
-    "revolut": RevolutParser,
-    "sbi": SbiParser,
-    "slice": SliceParser,
-    "union": UnionParser,
-}
+PARSERS: frozendict[str, type[BankSmsParser]] = frozendict(
+    {
+        "axis": AxisParser,
+        "bob": BobParser,
+        "canara": CanaraParser,
+        "equitas": EquitasParser,
+        "hdfc": HdfcParser,
+        "hsbc": HsbcParser,
+        "icici": IciciParser,
+        "idfc": IdfcParser,
+        "indian_bank": IndianBankParser,
+        "indusind": IndusindParser,
+        "jupiter": JupiterParser,
+        "kotak": KotakParser,
+        "onecard": OnecardParser,
+        "revolut": RevolutParser,
+        "sbi": SbiParser,
+        "slice": SliceParser,
+        "union": UnionParser,
+    }
+)
 
 __all__ = ["PARSERS"]

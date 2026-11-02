@@ -77,7 +77,7 @@ From each body, identify:
    `hdfc_dc_transaction_alert`). `bank-email-fetcher` stores these
    values verbatim — never rename.
 7. Register the dispatcher by adding `"{slug}": {Bank}Parser` to the
-   `PARSERS` dict in `bank_sms_parser/parsers/__init__.py`.
+   `PARSERS` frozendict in `bank_sms_parser/parsers/__init__.py`.
    `api.SUPPORTED_BANKS = tuple(PARSERS)` and the CLI bank list
    follow automatically.
 8. Add fixture-based pytest coverage:
