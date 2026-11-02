@@ -6,8 +6,8 @@
 - **Run tests:** `uv run pytest -q`
 - **Run lint:** `uv run ruff check`
 - **Run types:** `uv run ty check`
-- **Python:** 3.14+ · **Package manager:** uv
-- **PEP 758 is valid here.** Do not "fix" parenthesis-free multi-except syntax for 3.14.
+- **Python:** 3.15+ · **Package manager:** uv
+- **PEP 758 is valid here.** Do not "fix" parenthesis-free multi-except syntax for 3.15.
 
 ## Project layout
 
