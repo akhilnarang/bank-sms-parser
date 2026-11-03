@@ -24,6 +24,8 @@ def _assert_matches(parsed, expected: dict) -> None:
     Other fields compare directly.
     """
     assert parsed.email_type == expected["email_type"]
+    if "ledger_role" in expected:
+        assert parsed.ledger_role == expected["ledger_role"]
     txn = parsed.transaction
     assert txn is not None, "parsed.transaction was None"
     if "direction" in expected:
@@ -2282,6 +2284,26 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "reference_number": None,
             },
         ),
+        # Yes Bank RTGS debit: the only SMS for an outgoing transfer. It names
+        # the reference number, the beneficiary mask, and the event date and
+        # time, but no source account mask.
+        (
+            "yesbank",
+            "yesbank/account_rtgs_debit.txt",
+            {
+                "email_type": "yesbank_account_rtgs_debit_alert",
+                "ledger_role": "primary",
+                "direction": "debit",
+                "amount": Decimal("12345.00"),
+                "currency": "INR",
+                "account_mask": None,
+                "counterparty": None,
+                "reference_number": "YESBR9999010100000000",
+                "channel": "rtgs",
+                "transaction_date": datetime.date(2026, 8, 21),
+                "transaction_time": datetime.time(10, 20, 30),
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
@@ -2678,6 +2700,15 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
             "INR 12,345.00 credited to A/c XX0000 towards CHQ DEP SAMPLEBANK "
             "14-OCT-26 SAMPLE BRANCH CUSTOMER NAME Value 15-OCT-2026 10:20:30 . "
             "Clear Bal is INR 23,456.78",
+        ),
+        # Yes Bank RTGS debit frame with trailing text after the time. The end
+        # anchor rejects it, so a returned transfer cannot be read as a settled
+        # debit.
+        (
+            "yesbank",
+            "Your RTGS from YES BANK Ac with Ref No YESBR9999010100000000 of INR "
+            "12,345.00 has been credited to beneficiary Ac XXXXXXX9999 on "
+            "21-08-2026 at 10:20:30 - returned to remitter",
         ),
     ],
 )
