@@ -21,8 +21,9 @@ class BaseSmsParser(ABC):
     you define the class, so a wrong value stops the import.
 
     Set ``event_time_source`` to ``message_arrival`` only when both of these
-    are true: the body has no time, and the bank sends the message at the
-    moment of the transaction. Examine real messages before you change it.
+    are true: the body has no time of the event, and the bank sends the
+    message at the moment of the transaction. A date of an earlier event,
+    such as the purchase that a reversal returns, does not count. Examine real messages before you change it.
 
     Set ``identifies_by`` to ``card_mask`` when the message reports a payment
     of the card bill and gives the card mask. Set it to ``none`` when the

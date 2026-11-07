@@ -296,6 +296,191 @@ class SbiCcPaymentReceivedAlertParser(BaseSmsParser):
         )
 
 
+class SbiCcReversalAlertParser(BaseSmsParser):
+    """SBI credit-card reversal or cashback credit.
+
+    Sample::
+
+        "Rs. 12345 has been credited to your SBI Credit Card xxxx0000,
+         towards reversal/cashback from SAMPLE SHOP PRIV https://www.s IND
+         for trxn. dated 01/11/2026"
+
+    Direction is ``credit``: the amount goes back to the card. The merchant
+    is the counterparty. The body date is the date of the original
+    purchase, not of this credit, so the parser does not use it. The body
+    has no time, and SBI sends the SMS when it posts the credit. Thus
+    ``received_at`` (UTC to IST) gives the transaction date, and
+    ``event_time_source`` is ``message_arrival``. The full "towards
+    reversal/cashback from ... for trxn. dated" clause is required, so a
+    promo that quotes an amount cannot make a credit.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_cc_reversal_alert"
+    event_time_source = "message_arrival"
+
+    _PATTERN = re.compile(
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"has\s+been\s+credited\s+to\s+your\s+SBI\s+Credit\s+Card\s+"
+        r"(?P<card>x*\d{4}),\s+towards\s+reversal/cashback\s+from\s+"
+        r"(?P<merchant>.+?)\s+for\s+trxn\.\s+dated\s+"
+        r"(?P<date>\d{2}/\d{2}/\d{4})\.?",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("SBI CC reversal alert pattern did not match")
+        # A date that does not parse marks a corrupt body. The parser does not
+        # use the date: it is the date of the original purchase.
+        parse_date(match.group("date"))
+        txn_date: datetime.date | None = None
+        if received_at is not None:
+            txn_date = received_at_to_ist(received_at).date()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                counterparty=match.group("merchant").strip(),
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
+class SbiCcPaymentProvisionalAlertParser(BaseSmsParser):
+    """SBI credit-card bill payment, first notice.
+
+    Sample::
+
+        "We have received payment of Rs.12,345.00 via RuPay Debit Card &
+         the same has been credited to your SBI Credit Card. Your available
+         limit is Rs.99,999.99."
+
+    SBI sends this notice a few minutes before the "payment ... has been
+    successfully processed. ref no : ..." SMS for the same payment. That
+    later SMS carries the reference, so it is the ledger event, and
+    ``ledger_role`` here is ``provisional``. The body has no card mask, no
+    reference and no date, so ``identifies_by`` is ``none``,
+    ``received_at`` (UTC to IST) gives the date, and ``event_time_source``
+    is ``message_arrival``. The available limit goes in ``balance``.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_cc_payment_provisional_alert"
+    event_time_source = "message_arrival"
+    identifies_by = "none"
+
+    _PATTERN = re.compile(
+        r"We\s+have\s+received\s+payment\s+of\s+"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+via\s+.+?\s+&\s+"
+        r"the\s+same\s+has\s+been\s+credited\s+to\s+your\s+SBI\s+Credit\s+"
+        r"Card\.\s+Your\s+available\s+limit\s+is\s+"
+        r"Rs\.?\s*(?P<limit>\d[\d,]*\.\d{2})\.",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("SBI CC provisional payment pattern did not match")
+        txn_date: datetime.date | None = None
+        if received_at is not None:
+            txn_date = received_at_to_ist(received_at).date()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            ledger_role="provisional",
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                counterparty="Payment received",
+                balance=Money(
+                    amount=parse_amount(match.group("limit")), currency="INR"
+                ),
+                channel="card",
+            ),
+        )
+
+
+class SbiCcCashbackAlertParser(BaseSmsParser):
+    """SBI credit-card monthly cashback credit.
+
+    Sample::
+
+        "It's Cashback Time! Happy to share that Rs. 1234 has been credited
+         to your CASHBACK SBI Card account for the month of Jan'26 - SBI
+         Card."
+
+    Direction is ``credit``. The body has no card mask and no date. SBI
+    sends the SMS when it posts the cashback, so ``received_at`` (UTC to
+    IST) gives the date, and ``event_time_source`` is ``message_arrival``.
+    The counterparty is the fixed label ``Cashback``, so it does not show
+    the event, and ``identifies_by`` is ``none``.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_cc_cashback_alert"
+    event_time_source = "message_arrival"
+    identifies_by = "none"
+
+    _PATTERN = re.compile(
+        r"It['’]s\s+Cashback\s+Time!\s+Happy\s+to\s+share\s+that\s+"
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+has\s+been\s+credited\s+to\s+"
+        r"your\s+.*?SBI\s+Card\s+account\s+for\s+the\s+month\s+of\s+\S+\s+"
+        r"-\s*SBI\s+Card\.?",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("SBI CC cashback pattern did not match")
+        txn_date: datetime.date | None = None
+        if received_at is not None:
+            txn_date = received_at_to_ist(received_at).date()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                counterparty="Cashback",
+                channel="card",
+            ),
+        )
+
+
 class SbiDcTransactionAlertParser(BaseSmsParser):
     """SBI debit-card spend alert.
 
@@ -369,6 +554,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # been successfully processed" anchor; cannot collide with the spend or
     # account-credit shapes.
     SbiCcPaymentReceivedAlertParser(),
+    SbiCcReversalAlertParser(),
+    SbiCcPaymentProvisionalAlertParser(),
+    SbiCcCashbackAlertParser(),
     SbiAccountCreditAlertParser(),
     # IMPS inbound credit: unique "linked to mobile ... (IMPS Ref# ...)"
     # anchor; cannot collide with the "transfer from ... Ref No" shape.
