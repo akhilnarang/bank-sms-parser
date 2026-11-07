@@ -906,6 +906,65 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "channel": "card",
             },
         ),
+        # SBI Card bill-payment first notice. The later "successfully
+        # processed" SMS with the ref is the ledger event.
+        (
+            "sbi",
+            "sbi/cc_payment_provisional.txt",
+            {
+                "email_type": "sbi_cc_payment_provisional_alert",
+                "ledger_role": "provisional",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "currency": "INR",
+                "counterparty": "Payment received",
+                "balance": Decimal("99999.99"),
+                "channel": "card",
+                "transaction_date": None,
+            },
+        ),
+        (
+            "sbi",
+            "sbi/cc_cashback.txt",
+            {
+                "email_type": "sbi_cc_cashback_alert",
+                "direction": "credit",
+                "amount": Decimal("1234"),
+                "currency": "INR",
+                "counterparty": "Cashback",
+                "channel": "card",
+                "transaction_date": None,
+            },
+        ),
+        (
+            "axis",
+            "axis/cc_cashback.txt",
+            {
+                "email_type": "axis_cc_cashback_alert",
+                "direction": "credit",
+                "amount": Decimal("1234"),
+                "currency": "INR",
+                "card_mask": "XX0000",
+                "counterparty": "Cashback",
+                "channel": "card",
+                "transaction_date": None,
+            },
+        ),
+        # BOBCARD One reversal: no card mask; the body date is the original
+        # purchase date, so transaction_date is None without received_at.
+        (
+            "onecard",
+            "onecard/cc_reversal.txt",
+            {
+                "email_type": "onecard_cc_reversal_alert",
+                "direction": "credit",
+                "amount": Decimal("123.00"),
+                "currency": "INR",
+                "counterparty": "SampleShop In",
+                "channel": "card",
+                "transaction_date": None,
+            },
+        ),
         # SBI Card reversal/cashback credit. The body date is the original
         # purchase date, so transaction_date is None without received_at.
         (
@@ -2346,19 +2405,23 @@ def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
 
 
 @pytest.mark.parametrize(
-    ("fixture", "identifies_by", "card_mask"),
+    ("bank", "fixture", "identifies_by", "card_mask"),
     [
-        ("sbi/cc_payment_received.txt", "none", None),
-        ("sbi/cc_reversal.txt", "counterparty", "xxxx0000"),
+        ("sbi", "sbi/cc_payment_received.txt", "none", None),
+        ("sbi", "sbi/cc_reversal.txt", "counterparty", "xxxx0000"),
+        ("sbi", "sbi/cc_payment_provisional.txt", "none", None),
+        ("sbi", "sbi/cc_cashback.txt", "counterparty", None),
+        ("axis", "axis/cc_cashback.txt", "counterparty", "XX0000"),
+        ("onecard", "onecard/cc_reversal.txt", "counterparty", None),
     ],
 )
-def test_sbi_cc_credit_uses_received_at_for_date_fallback(
-    fixture: str, identifies_by: str, card_mask: str | None
+def test_cc_credit_uses_received_at_for_date_fallback(
+    bank: str, fixture: str, identifies_by: str, card_mask: str | None
 ) -> None:
     body = _read(fixture)
     # 21:45 UTC on 2026-08-13 is 03:15 IST on 2026-08-14.
     received = datetime.datetime(2026, 8, 13, 21, 45, tzinfo=datetime.UTC)
-    result = parse_sms("sbi", body, received_at=received)
+    result = parse_sms(bank, body, received_at=received)
     assert result.event_time_source == "message_arrival"
     assert result.identifies_by == identifies_by
     assert result.transaction is not None

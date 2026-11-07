@@ -8,6 +8,7 @@ from bank_sms_parser.parsers.onecard.charge import OnecardCcTransactionAlertPars
 from bank_sms_parser.parsers.onecard.payment_received import (
     OnecardCcPaymentReceivedParser,
 )
+from bank_sms_parser.parsers.onecard.reversal import OnecardCcReversalAlertParser
 from bank_sms_parser.parsers.onecard.service_info import (
     OnecardCcServiceInfoStubParser,
 )
@@ -30,6 +31,7 @@ from bank_sms_parser.parsers.onecard.statement_notice import (
 _PARSERS: tuple[BaseSmsParser, ...] = (
     OnecardCcPaymentReceivedParser(),
     OnecardCcTransactionAlertParser(),
+    OnecardCcReversalAlertParser(),
     OnecardCcStatementNoticeStubParser(),
     OnecardCcServiceInfoStubParser(),
 )
@@ -51,6 +53,7 @@ def parse(
 
 __all__ = [
     "OnecardCcPaymentReceivedParser",
+    "OnecardCcReversalAlertParser",
     "OnecardCcServiceInfoStubParser",
     "OnecardCcStatementNoticeStubParser",
     "OnecardCcTransactionAlertParser",

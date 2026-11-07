@@ -11,6 +11,7 @@ from bank_sms_parser.parsing import (
     parse_amount,
     parse_date,
     parse_datetime,
+    received_at_to_ist,
 )
 
 
@@ -273,10 +274,66 @@ class AxisAccountUpiCreditAlertParser(BaseSmsParser):
         )
 
 
+class AxisCcCashbackAlertParser(BaseSmsParser):
+    """Axis credit-card cashback credit.
+
+    Sample::
+
+        "Congratulations! Cashback of INR 1234 has been credited to your
+         Axis Bank Sample Visa Credit Card XX0000 towards your last month
+         spends - Axis Bank"
+
+    Direction is ``credit``. The counterparty is ``Cashback``. The body has
+    no date. Axis sends the SMS when it posts the cashback, so
+    ``received_at`` (UTC to IST) gives the date, and ``event_time_source``
+    is ``message_arrival``.
+    """
+
+    bank = "axis"
+    email_type = "axis_cc_cashback_alert"
+    event_time_source = "message_arrival"
+
+    _PATTERN = re.compile(
+        r"Congratulations!\s+Cashback\s+of\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+has\s+been\s+credited\s+to\s+your\s+"
+        r"Axis\s+Bank\s+.*?Credit\s+Card\s+(?P<card>XX\d{4})\s+"
+        r"towards\s+your\s+last\s+month\s+spends\s+-\s*Axis\s+Bank\.?"
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("Axis CC cashback pattern did not match")
+        txn_date: datetime.date | None = None
+        if received_at is not None:
+            txn_date = received_at_to_ist(received_at).date()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                counterparty="Cashback",
+                card_mask=match.group("card"),
+                channel="card",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     AxisCcPaymentReceivedParser(),
     AxisCcTransactionAlertParser(),
     AxisCcReversalAlertParser(),
+    AxisCcCashbackAlertParser(),
     AxisAccountUpiDebitAlertParser(),
     AxisAccountUpiCreditAlertParser(),
 )
