@@ -2447,6 +2447,18 @@ def test_sbi_account_credit_shapes_stay_distinct() -> None:
     assert imps.email_type == "sbi_account_imps_credit_alert"
 
 
+@pytest.mark.parametrize(
+    "fixture",
+    ["sbi/cc_reversal.txt", "sbi/cc_payment_provisional.txt"],
+)
+def test_sbi_truncated_card_credit_raises_parse_error(fixture: str) -> None:
+    """A body cut short at the end must not parse. A cut can drop a year
+    digit or the last digits of an amount and still leave a match."""
+    body = _read(fixture).rstrip()[:-2]
+    with pytest.raises(ParseError):
+        parse_sms("sbi", body)
+
+
 def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:
     body = _read("indusind/cc_payment_received.txt").rstrip() + "."
     result = parse_sms("indusind", body)

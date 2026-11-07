@@ -324,7 +324,7 @@ class SbiCcReversalAlertParser(BaseSmsParser):
         r"has\s+been\s+credited\s+to\s+your\s+SBI\s+Credit\s+Card\s+"
         r"(?P<card>x*\d{4}),\s+towards\s+reversal/cashback\s+from\s+"
         r"(?P<merchant>.+?)\s+for\s+trxn\.\s+dated\s+"
-        r"\d{1,2}/\d{1,2}/\d{2,4}\.?",
+        r"(?P<date>\d{2}/\d{2}/\d{4})\.?",
         re.IGNORECASE,
     )
 
@@ -338,6 +338,9 @@ class SbiCcReversalAlertParser(BaseSmsParser):
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.fullmatch(text)):
             raise ParseError("SBI CC reversal alert pattern did not match")
+        # A date that does not parse marks a corrupt body. The parser does not
+        # use the date: it is the date of the original purchase.
+        parse_date(match.group("date"))
         txn_date: datetime.date | None = None
         if received_at is not None:
             txn_date = received_at_to_ist(received_at).date()
@@ -385,7 +388,7 @@ class SbiCcPaymentProvisionalAlertParser(BaseSmsParser):
         r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+via\s+.+?\s+&\s+"
         r"the\s+same\s+has\s+been\s+credited\s+to\s+your\s+SBI\s+Credit\s+"
         r"Card\.\s+Your\s+available\s+limit\s+is\s+"
-        r"Rs\.?\s*(?P<limit>\d[\d,]*(?:\.\d+)?)\.?",
+        r"Rs\.?\s*(?P<limit>\d[\d,]*\.\d{2})\.",
         re.IGNORECASE,
     )
 
