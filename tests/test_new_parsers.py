@@ -906,6 +906,22 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "channel": "card",
             },
         ),
+        # SBI Card reversal/cashback credit. The body date is the original
+        # purchase date, so transaction_date is None without received_at.
+        (
+            "sbi",
+            "sbi/cc_reversal.txt",
+            {
+                "email_type": "sbi_cc_reversal_alert",
+                "direction": "credit",
+                "amount": Decimal("12345"),
+                "currency": "INR",
+                "card_mask": "xxxx0000",
+                "counterparty": "SAMPLE SHOP PRIV https://www.s IND",
+                "channel": "card",
+                "transaction_date": None,
+            },
+        ),
         # IDFC merchant debit: "for <merchant> transaction." with a DD-Mon-YYYY
         # date + 24-hour time and no balance trailer.
         (
@@ -2329,16 +2345,25 @@ def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
     assert result.transaction.transaction_time == datetime.time(3, 15)
 
 
-def test_sbi_cc_payment_uses_received_at_for_date_fallback() -> None:
-    body = _read("sbi/cc_payment_received.txt")
+@pytest.mark.parametrize(
+    ("fixture", "identifies_by", "card_mask"),
+    [
+        ("sbi/cc_payment_received.txt", "none", None),
+        ("sbi/cc_reversal.txt", "counterparty", "xxxx0000"),
+    ],
+)
+def test_sbi_cc_credit_uses_received_at_for_date_fallback(
+    fixture: str, identifies_by: str, card_mask: str | None
+) -> None:
+    body = _read(fixture)
     # 21:45 UTC on 2026-08-13 is 03:15 IST on 2026-08-14.
     received = datetime.datetime(2026, 8, 13, 21, 45, tzinfo=datetime.UTC)
     result = parse_sms("sbi", body, received_at=received)
     assert result.event_time_source == "message_arrival"
-    assert result.identifies_by == "none"
+    assert result.identifies_by == identifies_by
     assert result.transaction is not None
     assert result.transaction.transaction_date == datetime.date(2026, 8, 14)
-    assert result.transaction.card_mask is None
+    assert result.transaction.card_mask == card_mask
 
 
 def test_sbi_dc_and_cc_spends_stay_distinct() -> None:
