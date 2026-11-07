@@ -283,8 +283,9 @@ class AxisCcCashbackAlertParser(BaseSmsParser):
          Axis Bank Sample Visa Credit Card XX0000 towards your last month
          spends - Axis Bank"
 
-    Direction is ``credit``. The counterparty is ``Cashback``. The body has
-    no date. Axis sends the SMS when it posts the cashback, so
+    Direction is ``credit``. The counterparty is the fixed label
+    ``Cashback``, so it does not show the event, and ``identifies_by`` is
+    ``none``. The body has no date. Axis sends the SMS when it posts the cashback, so
     ``received_at`` (UTC to IST) gives the date, and ``event_time_source``
     is ``message_arrival``.
     """
@@ -292,6 +293,7 @@ class AxisCcCashbackAlertParser(BaseSmsParser):
     bank = "axis"
     email_type = "axis_cc_cashback_alert"
     event_time_source = "message_arrival"
+    identifies_by = "none"
 
     _PATTERN = re.compile(
         r"Congratulations!\s+Cashback\s+of\s+INR\s+"

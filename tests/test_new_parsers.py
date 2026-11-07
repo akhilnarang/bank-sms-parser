@@ -2410,8 +2410,8 @@ def test_jupiter_cc_payment_uses_received_at_for_datetime_fallback() -> None:
         ("sbi", "sbi/cc_payment_received.txt", "none", None),
         ("sbi", "sbi/cc_reversal.txt", "counterparty", "xxxx0000"),
         ("sbi", "sbi/cc_payment_provisional.txt", "none", None),
-        ("sbi", "sbi/cc_cashback.txt", "counterparty", None),
-        ("axis", "axis/cc_cashback.txt", "counterparty", "XX0000"),
+        ("sbi", "sbi/cc_cashback.txt", "none", None),
+        ("axis", "axis/cc_cashback.txt", "none", "XX0000"),
         ("onecard", "onecard/cc_reversal.txt", "counterparty", None),
     ],
 )
@@ -2478,6 +2478,7 @@ def test_indusind_cc_payment_is_primary_and_accepts_optional_period() -> None:
         ("equitas", "equitas/negative/mobile_login_failed.txt"),
         ("idfc", "idfc/negative/asba_blocked.txt"),
         ("idfc", "idfc/negative/asba_unblocked.txt"),
+        ("sbi", "sbi/negative/annual_fee_reversal_notice.txt"),
     ],
 )
 def test_real_negative_fixtures_raise_parse_error(bank, fixture) -> None:

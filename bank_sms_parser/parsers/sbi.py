@@ -436,12 +436,14 @@ class SbiCcCashbackAlertParser(BaseSmsParser):
     Direction is ``credit``. The body has no card mask and no date. SBI
     sends the SMS when it posts the cashback, so ``received_at`` (UTC to
     IST) gives the date, and ``event_time_source`` is ``message_arrival``.
-    The counterparty is ``Cashback``.
+    The counterparty is the fixed label ``Cashback``, so it does not show
+    the event, and ``identifies_by`` is ``none``.
     """
 
     bank = "sbi"
     email_type = "sbi_cc_cashback_alert"
     event_time_source = "message_arrival"
+    identifies_by = "none"
 
     _PATTERN = re.compile(
         r"It['’]s\s+Cashback\s+Time!\s+Happy\s+to\s+share\s+that\s+"

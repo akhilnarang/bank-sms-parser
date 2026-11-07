@@ -9,6 +9,7 @@ from bank_sms_parser.parsers.base import BaseSmsParser
 from bank_sms_parser.parsing import (
     normalize_whitespace,
     parse_amount,
+    parse_date,
     received_at_to_ist,
 )
 
@@ -36,7 +37,7 @@ class OnecardCcReversalAlertParser(BaseSmsParser):
     _PATTERN = re.compile(
         r"You['’]ve\s+received\s+a\s+reversal\s+of\s+your\s+transaction\s+"
         r"of\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+done\s+at\s+"
-        r"(?P<merchant>.+?)\s+on\s+\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+"
+        r"(?P<merchant>.+?)\s+on\s+(?P<date>\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s+"
         r"with\s+your\s+BOBCARD\s+One\s+Credit\s+Card\.?"
     )
 
@@ -50,6 +51,9 @@ class OnecardCcReversalAlertParser(BaseSmsParser):
         text = normalize_whitespace(body)
         if not (match := self._PATTERN.fullmatch(text)):
             raise ParseError("OneCard CC reversal pattern did not match")
+        # A date that does not parse marks a corrupt body. The parser does not
+        # use the date: it is the date of the original purchase.
+        parse_date(match.group("date"))
         txn_date: datetime.date | None = None
         if received_at is not None:
             txn_date = received_at_to_ist(received_at).date()
