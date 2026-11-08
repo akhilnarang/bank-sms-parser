@@ -998,6 +998,21 @@ def _assert_matches(parsed, expected: dict) -> None:
             },
         ),
         (
+            "idfc",
+            "idfc/account_card_repayment.txt",
+            {
+                "email_type": "idfc_account_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("5000.00"),
+                "currency": "INR",
+                "account_mask": "XX0000",
+                "card_mask": None,
+                "counterparty": "IDFC FIRST Bank Credit Card XX1111",
+                "balance": Decimal("9999.99"),
+                "transaction_date": datetime.date(2026, 11, 8),
+            },
+        ),
+        (
             "sbi",
             "sbi/account_credit.txt",
             {

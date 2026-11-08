@@ -196,6 +196,14 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
          05-Aug-2026 13:34 for SamplePay Private Limited transaction.
          Call us on 180010888 for dispute. Team IDFC FIRST Bank."
 
+    5) Own credit-card bill payment anchored on ``towards the repayment
+       of IDFC FIRST Bank Credit Card``. The card is the counterparty.
+       The card mask stays out of ``card_mask``, because this debit
+       belongs to the account, not to the card:
+        "Your A/C XX0000 has been debited by INR 5,000.00 towards the
+         repayment of IDFC FIRST Bank Credit Card ending XX1111 on
+         08/11/26. Your updated account balance is INR 9,999.99. ..."
+
     Each regex is anchored on its discriminating clause so the shapes
     cannot accidentally match each other.
     """
@@ -232,6 +240,14 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         r"on\s+(?P<date>\d{1,2}-[A-Za-z]{3}-\d{4})\s+(?P<time>\d{1,2}:\d{2})\s+"
         r"for\s+(?P<merchant>.+?)\s+transaction\.\s*"
         r"Call\s+us\s+on\s+\d+\s+for\s+dispute"
+    )
+
+    _CARD_REPAYMENT_PATTERN = re.compile(
+        r"Your\s+A/C\s+(?P<account>X+\d+)\s+has\s+been\s+debited\s+by\s+INR\s+"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+towards\s+the\s+repayment\s+of\s+"
+        r"(?P<card>IDFC\s+FIRST\s+Bank\s+Credit\s+Card)\s+ending\s+(?P<mask>X+\d+)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\.\s*"
+        r"Your\s+updated\s+account\s+balance\s+is\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
     )
 
     def parse(
@@ -297,9 +313,28 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
                 ),
             )
 
+        if match := self._CARD_REPAYMENT_PATTERN.search(text):
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=f"{match.group('card')} {match.group('mask')}",
+                    balance=Money(
+                        amount=parse_amount(match.group("balance")), currency="INR"
+                    ),
+                    account_mask=match.group("account"),
+                ),
+            )
+
         raise ParseError(
             "IDFC account transaction alert: no known pattern matched "
-            "(tried card spend, UPI debit, generic debit, merchant debit)"
+            "(tried card spend, UPI debit, generic debit, merchant debit, "
+            "card repayment)"
         )
 
     def _build(
