@@ -163,11 +163,11 @@ class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
     email_type = "yesbank_account_neft_credit_alert"
 
     _PATTERN = re.compile(
-        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+credited\s+to\s+YES\s+BANK\s+Ac\s+"
+        r"INR\s+(?P<amount>[\d,]+\.\d{2})\s+credited\s+to\s+YES\s+BANK\s+Ac\s+"
         r"(?P<account>X+\d+)\s+on\s+(?P<date>\d{2}[A-Za-z]{3}\d{2})\s+"
         r"(?P<time>\d{2}:\d{2})\.\s+"
         r"NEFT:(?P<ref>[A-Z0-9]{8,})/From:(?P<name>.+?)\.\s+"
-        r"Bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)\.?\s*$",
+        r"Bal\s+INR\s+(?P<balance>[\d,]+\.\d{2})\.\s*$",
         re.IGNORECASE,
     )
     _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)

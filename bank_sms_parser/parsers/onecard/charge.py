@@ -50,7 +50,7 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
     _SPENT_AT = re.compile(
         r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+"
         r"at\s+(?P<merchant>.+?)\s+on\s+your\s+"
-        r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
+        r"BOBCARD\s+One\s+Credit\s+Card\s+(?P<card>[xX]{2,}\d{4})\."
     )
     _PAID_FOREIGN = re.compile(
         r"You've\s+paid\s+(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"

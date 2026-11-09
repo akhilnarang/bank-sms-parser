@@ -2870,6 +2870,24 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
             "12,345.00 has been credited to beneficiary Ac XXXXXXX9999 on "
             "21-08-2026 at 10:20:30 - returned to remitter",
         ),
+        # Yes Bank NEFT credit cut off inside the balance.
+        (
+            "yesbank",
+            "INR 12,345.00 credited to YES BANK Ac X0000 on 01JAN26 10:20. "
+            "NEFT:SAMP0000000000/From:Mr. SAMPLE NAME. Bal INR 23,456.",
+        ),
+        # BOBCARD spend cut off inside the card mask.
+        (
+            "onecard",
+            "Tasty choice! Rs. 123.00 spent at SampleFoods on your BOBCARD One "
+            "Credit Card xxXX0",
+        ),
+        # ICICI IMPS credit cut off inside the reference.
+        (
+            "icici",
+            "Your ICICI Bank Acct XX000 is credited with Rs 1.00 on 05-Nov-26 by "
+            "Acct XX999. IMPS Ref. no. 0",
+        ),
         # Yes Bank NEFT credit cut off before the balance.
         (
             "yesbank",

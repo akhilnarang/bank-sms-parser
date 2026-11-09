@@ -246,7 +246,7 @@ class IciciAccountImpsCreditAlertParser(BaseSmsParser):
         r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
         r"by\s+(?:Account\s+linked\s+to\s+mobile\s+number\s+(?P<mobile>X+\d+)"
         r"|Acct\s+(?P<payer>XX\d+))\.\s*"
-        r"IMPS\s+Ref\.?\s+no\.?\s+(?P<ref>\d+)"
+        r"IMPS\s+Ref\.?\s+no\.?\s+(?P<ref>\d{12})\."
     )
 
     def parse(
