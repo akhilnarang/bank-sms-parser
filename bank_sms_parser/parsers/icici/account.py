@@ -215,7 +215,7 @@ class IciciAccountUpiCreditAlertParser(BaseSmsParser):
 
 
 class IciciAccountImpsCreditAlertParser(BaseSmsParser):
-    """ICICI account IMPS credit from a mobile-linked account.
+    """ICICI account IMPS credit from a mobile number or a payer account.
 
     Sample:
         "ICICI Bank Account XX000 is credited with Rs 15,000.00 on
@@ -223,27 +223,30 @@ class IciciAccountImpsCreditAlertParser(BaseSmsParser):
          IMPS Ref. no. 000000000000."
 
     Discriminators vs ``IciciAccountUpiCreditAlertParser``:
-    - leading ``ICICI Bank Account`` (UPI shape opens with
-      ``Dear Customer, Acct``);
-    - remitter is ``Account linked to mobile number <masked>`` rather
-      than a named payer;
+    - leading ``ICICI Bank Account`` or ``ICICI Bank Acct`` (UPI shape
+      opens with ``Dear Customer, Acct``);
+    - remitter is a masked mobile or a masked account, not a named payer;
     - trailing ``IMPS Ref. no. <digits>.`` (the UPI shape uses
       ``UPI:<digits>-ICICI Bank.``).
 
-    ``channel`` is ``imps``; the masked mobile is surfaced as the
-    counterparty (``Mobile XXXXX####``), mirroring the IDFC IMPS-credit
-    parser's convention.
+    A second form names the payer account instead of the mobile:
+        "Your ICICI Bank Acct XX000 is credited with Rs 1.00 on 05-Nov-26
+         by Acct XX999. IMPS Ref. no. 000000000000."
+
+    ``channel`` is ``imps``. The counterparty is the masked mobile
+    (``Mobile XXXXX####``) or the masked payer account (``Acct XX###``).
     """
 
     bank = "icici"
     email_type = "icici_account_imps_credit_alert"
 
     _PATTERN = re.compile(
-        r"ICICI\s+Bank\s+Account\s+(?P<account>XX\d+)\s+is\s+credited\s+with\s+"
+        r"ICICI\s+Bank\s+Acc(?:oun)?t\s+(?P<account>XX\d+)\s+is\s+credited\s+with\s+"
         r"Rs\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+"
-        r"by\s+Account\s+linked\s+to\s+mobile\s+number\s+(?P<mobile>X+\d+)\.\s*"
-        r"IMPS\s+Ref\.?\s+no\.?\s+(?P<ref>\d+)"
+        r"by\s+(?:Account\s+linked\s+to\s+mobile\s+number\s+(?P<mobile>X+\d+)"
+        r"|Acct\s+(?P<payer>XX\d+))\.\s*"
+        r"IMPS\s+Ref\.?\s+no\.?\s+(?P<ref>\d{12})\."
     )
 
     def parse(
@@ -265,7 +268,11 @@ class IciciAccountImpsCreditAlertParser(BaseSmsParser):
                     amount=parse_amount(match.group("amount")), currency="INR"
                 ),
                 transaction_date=parse_date(match.group("date")),
-                counterparty=f"Mobile {match.group('mobile')}",
+                counterparty=(
+                    f"Mobile {match.group('mobile')}"
+                    if match.group("mobile")
+                    else f"Acct {match.group('payer')}"
+                ),
                 reference_number=match.group("ref"),
                 channel="imps",
                 account_mask=match.group("account"),

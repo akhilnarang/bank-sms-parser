@@ -2394,6 +2394,50 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(10, 20, 30),
             },
         ),
+        (
+            "yesbank",
+            "yesbank/account_neft_credit.txt",
+            {
+                "email_type": "yesbank_account_neft_credit_alert",
+                "ledger_role": "primary",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "currency": "INR",
+                "account_mask": "X0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "SAMP0000000000",
+                "channel": "neft",
+                "balance": Decimal("23456.78"),
+                "transaction_date": datetime.date(2026, 1, 1),
+                "transaction_time": datetime.time(10, 20),
+            },
+        ),
+        (
+            "onecard",
+            "onecard/cc_charge_spent_at.txt",
+            {
+                "email_type": "onecard_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("123.00"),
+                "currency": "INR",
+                "card_mask": "xxXX0000",
+                "counterparty": "SampleFoods",
+            },
+        ),
+        (
+            "icici",
+            "icici/account_imps_credit_from_acct.txt",
+            {
+                "email_type": "icici_account_imps_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("1.00"),
+                "account_mask": "XX000",
+                "counterparty": "Acct XX999",
+                "reference_number": "000000000000",
+                "channel": "imps",
+                "transaction_date": datetime.date(2026, 11, 5),
+            },
+        ),
     ],
 )
 def test_parses_real_sms(bank, fixture, expected) -> None:
@@ -2825,6 +2869,30 @@ def test_hdfc_refund_not_shadowed_by_cc_upi_pattern() -> None:
             "Your RTGS from YES BANK Ac with Ref No YESBR9999010100000000 of INR "
             "12,345.00 has been credited to beneficiary Ac XXXXXXX9999 on "
             "21-08-2026 at 10:20:30 - returned to remitter",
+        ),
+        # Yes Bank NEFT credit cut off inside the balance.
+        (
+            "yesbank",
+            "INR 12,345.00 credited to YES BANK Ac X0000 on 01JAN26 10:20. "
+            "NEFT:SAMP0000000000/From:Mr. SAMPLE NAME. Bal INR 23,456.",
+        ),
+        # BOBCARD spend cut off inside the card mask.
+        (
+            "onecard",
+            "Tasty choice! Rs. 123.00 spent at SampleFoods on your BOBCARD One "
+            "Credit Card xxXX0",
+        ),
+        # ICICI IMPS credit cut off inside the reference.
+        (
+            "icici",
+            "Your ICICI Bank Acct XX000 is credited with Rs 1.00 on 05-Nov-26 by "
+            "Acct XX999. IMPS Ref. no. 0",
+        ),
+        # Yes Bank NEFT credit cut off before the balance.
+        (
+            "yesbank",
+            "INR 12,345.00 credited to YES BANK Ac X0000 on 01JAN26 10:20. "
+            "NEFT:SAMP0000000000/From:Mr. SAMPLE NAME.",
         ),
     ],
 )

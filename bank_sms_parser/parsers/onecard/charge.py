@@ -1,18 +1,20 @@
 """OneCard credit-card charge SMS parser.
 
-OneCard ships three cosmetic phrasings of the same CC-charge event:
+OneCard ships four cosmetic phrasings of the same CC-charge event:
     1. "Your bill of Rs. X at Y has been cleared with your BOBCARD One Credit Card ending in XX..."
     2. "Fresh picks! You've spent Rs. X at Y with your BOBCARD One Credit Card ending in XX..."
     3. "You've paid <CCY> X at Y with your BOBCARD One Credit Card ending in XX..."
+    4. "Tasty choice! Rs. X spent at Y on your BOBCARD One Credit Card xxXX..."
 
-All three emit ``email_type="onecard_cc_transaction_alert"`` (per spec §6).
-They live in one parser class with three SEPARATELY COMPILED regexes,
+All four emit ``email_type="onecard_cc_transaction_alert"`` (per spec §6).
+They live in one parser class with SEPARATELY COMPILED regexes,
 tried in order — a single regex with 3-way alternation would re-use
 named groups and trigger ``re.error: redefinition of group name`` in
 Python's stdlib ``re`` module (see spec §6 OneCard notes).
 
 Variant 3 carries a 3-letter ISO currency code (real example: USD); the
-other two are INR by convention.
+others are INR by convention. The tagline before variant 4 changes from
+message to message, so the pattern does not include it.
 
 The card mask has two styles: "ending in XX0000" and a bare "xxXX0000".
 The phrase "ending in" is thus optional.
@@ -45,13 +47,18 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
         r"at\s+(?P<merchant>.+?)\s+with\s+your\s+"
         r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
     )
+    _SPENT_AT = re.compile(
+        r"Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+"
+        r"at\s+(?P<merchant>.+?)\s+on\s+your\s+"
+        r"BOBCARD\s+One\s+Credit\s+Card\s+(?P<card>[xX]{2,}\d{4})\."
+    )
     _PAID_FOREIGN = re.compile(
         r"You've\s+paid\s+(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+"
         r"at\s+(?P<merchant>.+?)\s+with\s+your\s+"
         r"BOBCARD\s+One\s+Credit\s+Card\s+(?:ending\s+in\s+)?(?P<card>[xX]{2,}\d+)"
     )
 
-    _PATTERNS_INR = (_BILL_CLEARED, _SPENT)
+    _PATTERNS_INR = (_BILL_CLEARED, _SPENT, _SPENT_AT)
     _PATTERN_FOREIGN = _PAID_FOREIGN
 
     def parse(
@@ -70,7 +77,7 @@ class OnecardCcTransactionAlertParser(BaseSmsParser):
                 match, currency=match.group("currency"), received_at=received_at
             )
         raise ParseError(
-            "OneCard CC charge: no known shape matched (tried bill_cleared, spent, paid_foreign)"
+            "OneCard CC charge: no known shape matched (tried bill_cleared, spent, spent_at, paid_foreign)"
         )
 
     def _build(
