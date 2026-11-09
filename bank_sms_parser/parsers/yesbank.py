@@ -147,9 +147,86 @@ class YesbankAccountRtgsDebitAlertParser(BaseSmsParser):
         )
 
 
+class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
+    """Parse a Yes Bank account NEFT credit alert.
+
+    Sample (synthetic):
+        "INR 12,345.00 credited to YES BANK Ac X0000 on 01JAN26 10:20.
+         NEFT:SAMP0000000000/From:Mr. SAMPLE NAME. Bal INR 23,456.78."
+
+    The body carries the amount, the account mask, the event date and time,
+    the NEFT reference, the payer name and the balance. The bank can cut the
+    payer name short. The parser drops the honorific from the name.
+    """
+
+    bank = "yesbank"
+    email_type = "yesbank_account_neft_credit_alert"
+
+    _PATTERN = re.compile(
+        r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+credited\s+to\s+YES\s+BANK\s+Ac\s+"
+        r"(?P<account>X+\d+)\s+on\s+(?P<date>\d{2}[A-Za-z]{3}\d{2})\s+"
+        r"(?P<time>\d{2}:\d{2})\.\s+"
+        r"NEFT:(?P<ref>[A-Z0-9]{8,})/From:(?P<name>.+?)\.\s+"
+        r"Bal\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)\.?\s*$",
+        re.IGNORECASE,
+    )
+    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        """Parse one Yes Bank NEFT credit alert.
+
+        Args:
+            body: The SMS body text.
+            sender: The optional TRAI sender ID.
+            received_at: The optional UTC arrival time.
+
+        Returns:
+            The parsed message with a credit transaction.
+
+        Raises:
+            ParseError: If the body does not match the NEFT credit shape.
+        """
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Yes Bank NEFT credit pattern did not match")
+        try:
+            dt = datetime.datetime.strptime(
+                f"{match.group('date')} {match.group('time')}", "%d%b%y %H:%M"
+            )
+        except ValueError as exc:
+            raise ParseError(f"Yes Bank NEFT credit date: {exc}") from exc
+        name = self._HONORIFIC.sub("", match.group("name")).strip()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=name or None,
+                account_mask=match.group("account"),
+                reference_number=match.group("ref"),
+                channel="neft",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     YesbankAccountChequeDepositAlertParser(),
     YesbankAccountRtgsDebitAlertParser(),
+    YesbankAccountNeftCreditAlertParser(),
 )
 
 
