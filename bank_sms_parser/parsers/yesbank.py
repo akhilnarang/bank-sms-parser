@@ -4,7 +4,7 @@ import datetime
 import re
 from typing import Literal
 
-from bank_sms_parser.exceptions import ParseError
+from bank_sms_parser.exceptions import ParseError, ParserStubError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
@@ -397,12 +397,81 @@ class YesbankAccountImpsRefAlertParser(BaseSmsParser):
         )
 
 
+class YesbankServiceInfoStubParser(BaseSmsParser):
+    """Recognize and skip a Yes Bank service SMS.
+
+    Samples (synthetic):
+        "Your attempt to login in YES ONLINE has failed on 01-Jan-2026
+         10:20:30 AM IST. ..."
+        "Recipient SAMPLE with A/c no ending 0000 is added on 01-Jan-2026
+         10:20:30 AM IST. ..."
+
+    These messages report a login, a payee, a card or an account setting.
+    They move no money. Each pattern names a whole service phrase, so it
+    cannot match a transaction alert.
+    """
+
+    bank = "yesbank"
+    email_type = "yesbank_service_info_stub"
+
+    _PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+        re.compile(pattern, re.IGNORECASE)
+        for pattern in (
+            r"^Limited\s+fund\s+transfer\s+can\s+be\s+made\s+to\s+recipient\b",
+            r"^Transfer\s+funds\s+up\s+to\s+daily\s+permissible\s+limit\s+to\s+"
+            r"recipient\s+.+?\s+successfully\s+added\s+on\b",
+            r"^Recipient\s+.+?\s+with\s+A/c\s+no\s+ending\s+\d+\s+is\s+added\s+on\b",
+            r"^Your\s+attempt\s+to\s+login\s+in\s+YES\s+ONLINE\s+has\s+failed\b",
+            r"^Your\s+registration\s+for\s+YES\s+Online\s+is\s+successful\b",
+            r"^Your\s+security\s+Q\s*&\s*A\s+are\s+set\s+successfully\b",
+            r"\bYES\s+BANK\s+Debit\s+Card\s+token\s+ending\s+with\s+\d+\s+"
+            r"has\s+been\s+activated\b",
+            r"\bactivate\s+your\s+YES\s+BANK\s+Credit\s+Card\s+within\s+\d+\s+days\b",
+            r"\brequest\s+for\s+E-statements\s+for\s+your\s+YES\s+BANK\s+Customer\s+ID\b",
+            r"\bYES\s+BANK\s+Saving\s+Account\s+number\s+\d+\s+is\s+now\s+operational\b",
+            r"^Thank\s+You\s+for\s+opening\s+an\s+account\s+with\s+YES\s+BANK\b",
+            r"\bnominee\s+details\s+have\s+been\s+updated\s+successfully\b",
+        )
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        """Recognize one Yes Bank service SMS.
+
+        Args:
+            body: The SMS body text.
+            sender: The optional TRAI sender ID.
+            received_at: The optional UTC arrival time.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            ParserStubError: If the body is a known service SMS.
+            ParseError: If the body is not a known service SMS.
+        """
+        text = normalize_whitespace(body)
+        if any(pattern.search(text) for pattern in self._PATTERNS):
+            raise ParserStubError(
+                "yesbank_service_info_stub: recognized Yes Bank service SMS; "
+                "it moves no money, so it is intentionally not parsed"
+            )
+        raise ParseError("Yes Bank service info: no known service phrase")
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     YesbankAccountChequeDepositAlertParser(),
     YesbankAccountRtgsDebitAlertParser(),
     YesbankAccountNeftCreditAlertParser(),
     YesbankAccountImpsAlertParser(),
     YesbankAccountImpsRefAlertParser(),
+    # The stub goes last, so it never hides a transaction parser.
+    YesbankServiceInfoStubParser(),
 )
 
 

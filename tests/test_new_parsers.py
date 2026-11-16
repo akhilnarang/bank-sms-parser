@@ -2624,6 +2624,32 @@ def test_idfc_asba_notices_are_recognized_stubs(fixture) -> None:
     assert "idfc_asba_notice_stub: ParserStubError" in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "limited_transfer",
+        "payee_limit_added",
+        "payee_added",
+        "login_failed",
+        "online_registered",
+        "security_qa_set",
+        "debit_card_token",
+        "credit_card_activate",
+        "estatement",
+        "account_operational",
+        "account_opened",
+        "nominee_updated",
+    ],
+)
+def test_yesbank_service_sms_are_recognized_stubs(fixture) -> None:
+    """A Yes Bank service SMS carries the stub marker, so the consumer
+    skips it instead of failing it."""
+    body = _read(f"yesbank/negative/{fixture}.txt")
+    with pytest.raises(ParseError) as excinfo:
+        parse_sms("yesbank", body)
+    assert "yesbank_service_info_stub: ParserStubError" in str(excinfo.value)
+
+
 def test_hdfc_rtgs_deposited_is_a_completion_leg() -> None:
     """The RTGS settlement leg carries the UTR for an event a prior submission
     alert already recorded. It declares ledger_role='completion' so the
