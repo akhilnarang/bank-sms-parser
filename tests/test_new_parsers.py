@@ -2413,6 +2413,50 @@ def _assert_matches(parsed, expected: dict) -> None:
             },
         ),
         (
+            "idfc",
+            "idfc/debit_card_spend.txt",
+            {
+                "email_type": "idfc_account_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("1234.00"),
+                "account_mask": None,
+                "card_mask": None,
+                "counterparty": "SAMPLE MERCHANT",
+                "channel": "card",
+                "balance": Decimal("9999.99"),
+                "transaction_date": datetime.date(2026, 11, 13),
+            },
+        ),
+        (
+            "axis",
+            "axis/cc_spend_inline.txt",
+            {
+                "email_type": "axis_cc_transaction_alert",
+                "direction": "debit",
+                "amount": Decimal("1234"),
+                "card_mask": "XX0000",
+                "counterparty": "SAMPLE MERCHANT",
+                "channel": "card",
+                "balance": Decimal("99999"),
+                "transaction_date": datetime.date(2026, 11, 16),
+                "transaction_time": datetime.time(1, 17, 2),
+            },
+        ),
+        (
+            "slice",
+            "slice/account_transfer_debit.txt",
+            {
+                "email_type": "slice_account_transfer_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("1234.56"),
+                "account_mask": "xx0000",
+                "counterparty": "slice",
+                "reference_number": "600000000000",
+                "channel": None,
+                "transaction_date": datetime.date(2026, 11, 12),
+            },
+        ),
+        (
             "yesbank",
             "yesbank/account_imps_credit.txt",
             {
@@ -2662,6 +2706,14 @@ def test_yesbank_service_sms_are_recognized_stubs(fixture) -> None:
     with pytest.raises(ParseError) as excinfo:
         parse_sms("yesbank", body)
     assert "yesbank_service_info_stub: ParserStubError" in str(excinfo.value)
+
+
+def test_slice_fd_notice_is_a_recognized_stub() -> None:
+    """A fixed deposit notice moves no money between tracked accounts, so
+    the consumer skips it instead of failing it."""
+    with pytest.raises(ParseError) as excinfo:
+        parse_sms("slice", _read("slice/negative/fd_created.txt"))
+    assert "slice_service_info_stub: ParserStubError" in str(excinfo.value)
 
 
 def test_hdfc_rtgs_deposited_is_a_completion_leg() -> None:

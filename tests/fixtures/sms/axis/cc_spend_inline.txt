@@ -1,0 +1,4 @@
+Spent INR 1234 
+using Axis Bank Credit Card no. XX0000 on 16-11-26 01:17:02 IST at 
+SAMPLE MERCHANT. 
+Avl limit: INR 99999. Not you? SMS BLOCK 0000 to +910000000000.

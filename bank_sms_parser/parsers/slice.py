@@ -23,12 +23,17 @@ Supported SMS shapes:
    reference.
 7. ``slice_cc_repayment_received_alert`` — manual card repayment.
 8. ``slice_cc_refund_alert`` — merchant refund to the card.
+9. ``slice_account_transfer_debit_alert`` — a debit from the slice savings
+   account that names the payee before the date and labels the reference
+   ``Ref:``. The body names no rail.
+10. ``slice_service_info_stub`` — a fixed deposit notice. It moves no money
+    between the tracked accounts, so the parser skips it.
 """
 
 import datetime
 import re
 
-from bank_sms_parser.exceptions import ParseError
+from bank_sms_parser.exceptions import ParseError, ParserStubError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
 from bank_sms_parser.parsing import (
@@ -549,6 +554,89 @@ class SliceCcRefundAlertParser(BaseSmsParser):
         )
 
 
+class SliceAccountTransferDebitAlertParser(BaseSmsParser):
+    """slice savings account debit that names the payee before the date.
+
+    Sample (synthetic):
+        "Rs. 1,234.56 sent from a/c xx0000 to slice on 12-Nov-26
+         (Ref: 600000000000). Not you? Call 00000000000 - slice"
+
+    The UPI debit names the date first and labels the reference
+    ``UPI Ref:``. This shape names the payee first and labels it ``Ref:``.
+    The body names no rail, so ``channel`` stays empty.
+    """
+
+    bank = "slice"
+    email_type = "slice_account_transfer_debit_alert"
+
+    _PATTERN = re.compile(
+        r"Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+sent\s+from\s+"
+        r"a/c\s+(?P<account>xx\d+)\s+to\s+(?P<recipient>.+?)\s+"
+        r"on\s+(?P<date>\d{1,2}-\w+-\d{2,4})\s+\(Ref:\s*(?P<ref>\w+)\)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("slice account transfer debit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("recipient").strip(),
+                reference_number=match.group("ref"),
+                account_mask=match.group("account"),
+            ),
+        )
+
+
+class SliceServiceInfoStubParser(BaseSmsParser):
+    """Recognize and skip a slice fixed deposit notice.
+
+    Sample (synthetic):
+        "Your fixed deposit of Rs.10,000 has been created on 01-Jan-2026.
+         For queries, call 0000-000-0000 - slice"
+
+    The money for the deposit leaves a tracked account in its own alert.
+    The notice itself moves no money between the tracked accounts.
+    """
+
+    bank = "slice"
+    email_type = "slice_service_info_stub"
+
+    _PATTERN = re.compile(
+        r"^Your\s+fixed\s+deposit\s+of\s+Rs\.?\s*[\d,]+(?:\.\d+)?\s+"
+        r"has\s+been\s+created\s+on\b",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        if self._PATTERN.search(normalize_whitespace(body)):
+            raise ParserStubError(
+                "slice_service_info_stub: recognized slice fixed deposit notice; "
+                "it moves no money between tracked accounts, so it is not parsed"
+            )
+        raise ParseError("slice service info: no known service phrase")
+
+
 # Order: most-specific first. The CC bill-paid alert has a unique
 # template ("slice UPI credit card bill ... paid successfully via
 # autopay") that no other shape matches; the manual-repayment alert is
@@ -568,6 +656,9 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     SliceAccountImpsCreditAlertParser(),
     SliceAccountUpiDebitAlertParser(),
     SliceAccountImpsDebitAlertParser(),
+    SliceAccountTransferDebitAlertParser(),
+    # The stub goes last, so it never hides a transaction parser.
+    SliceServiceInfoStubParser(),
 )
 
 
