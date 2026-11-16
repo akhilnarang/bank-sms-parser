@@ -206,6 +206,60 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_time": datetime.time(19, 53, 18),
             },
         ),
+        # AU debit: the order ID before the hyphen is dropped, because one
+        # order can debit twice (transfer and fee) with the same ID.
+        (
+            "au",
+            "au/account_debit.txt",
+            {
+                "email_type": "au_account_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "X0000",
+                "counterparty": "International Transfe",
+                "reference_number": None,
+                "balance": Decimal("1000.00"),
+                "transaction_date": datetime.date(2026, 11, 16),
+            },
+        ),
+        (
+            "au",
+            "au/account_debit_fee.txt",
+            {
+                "email_type": "au_account_debit_alert",
+                "amount": Decimal("123.45"),
+                "counterparty": "CURRENCY CONVERSION T",
+                "reference_number": None,
+            },
+        ),
+        # AU IMPS credit: the rail prefix becomes the channel and the bare
+        # number is the reference.
+        (
+            "au",
+            "au/account_imps_credit.txt",
+            {
+                "email_type": "au_account_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "X0000",
+                "counterparty": "CUSTOMER",
+                "reference_number": "000000000000",
+                "channel": "imps",
+                "balance": Decimal("13345.00"),
+                "transaction_date": datetime.date(2026, 11, 16),
+            },
+        ),
+        (
+            "au",
+            "au/account_credit.txt",
+            {
+                "email_type": "au_account_credit_alert",
+                "direction": "credit",
+                "counterparty": "samplepayer-S",
+                "reference_number": "ABCDE_0000_00000000000000",
+                "channel": None,
+            },
+        ),
         (
             "axis",
             "axis/cc_payment_received.txt",
