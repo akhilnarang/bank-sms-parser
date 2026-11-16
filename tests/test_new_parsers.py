@@ -2413,6 +2413,68 @@ def _assert_matches(parsed, expected: dict) -> None:
             },
         ),
         (
+            "yesbank",
+            "yesbank/account_imps_credit.txt",
+            {
+                "email_type": "yesbank_account_imps_alert",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "X0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "600000000000",
+                "channel": "imps",
+                "balance": Decimal("23456.78"),
+                "transaction_date": datetime.date(2026, 1, 1),
+                "transaction_time": datetime.time(10, 20),
+            },
+        ),
+        (
+            "yesbank",
+            "yesbank/account_imps_debit.txt",
+            {
+                "email_type": "yesbank_account_imps_alert",
+                "direction": "debit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "X0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "600000000000",
+                "channel": "imps",
+                "balance": Decimal("23456.78"),
+                "transaction_date": datetime.date(2026, 1, 1),
+                "transaction_time": datetime.time(10, 20),
+            },
+        ),
+        (
+            "yesbank",
+            "yesbank/account_imps_ref_credit.txt",
+            {
+                "email_type": "yesbank_account_imps_ref_alert",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "XXXXXXXX0000",
+                "counterparty": None,
+                "reference_number": "600000000000",
+                "channel": "imps",
+                "transaction_date": datetime.date(2026, 1, 1),
+                "transaction_time": None,
+            },
+        ),
+        (
+            "yesbank",
+            "yesbank/account_imps_ref_debit.txt",
+            {
+                "email_type": "yesbank_account_imps_ref_alert",
+                "direction": "debit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "XXXXXXXX0000",
+                "counterparty": None,
+                "reference_number": "600000000000",
+                "channel": "imps",
+                "transaction_date": datetime.date(2026, 1, 1),
+                "transaction_time": None,
+            },
+        ),
+        (
             "onecard",
             "onecard/cc_charge_spent_at.txt",
             {
@@ -2560,6 +2622,46 @@ def test_idfc_asba_notices_are_recognized_stubs(fixture) -> None:
     with pytest.raises(ParseError) as excinfo:
         parse_sms("idfc", body)
     assert "idfc_asba_notice_stub: ParserStubError" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("fixture", "source"),
+    [
+        ("account_imps_ref_credit", "message_arrival"),
+        ("account_imps_credit", "body"),
+    ],
+)
+def test_yesbank_imps_time_source(fixture: str, source: str) -> None:
+    """The reference-only IMPS SMS has no time, so it declares its arrival
+    time. The consumer then gives it the narrow arrival window."""
+    result = parse_sms("yesbank", _read(f"yesbank/{fixture}.txt"))
+    assert result.event_time_source == source
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "limited_transfer",
+        "payee_limit_added",
+        "payee_added",
+        "login_failed",
+        "online_registered",
+        "security_qa_set",
+        "debit_card_token",
+        "credit_card_activate",
+        "estatement",
+        "account_operational",
+        "account_opened",
+        "nominee_updated",
+    ],
+)
+def test_yesbank_service_sms_are_recognized_stubs(fixture) -> None:
+    """A Yes Bank service SMS carries the stub marker, so the consumer
+    skips it instead of failing it."""
+    body = _read(f"yesbank/negative/{fixture}.txt")
+    with pytest.raises(ParseError) as excinfo:
+        parse_sms("yesbank", body)
+    assert "yesbank_service_info_stub: ParserStubError" in str(excinfo.value)
 
 
 def test_hdfc_rtgs_deposited_is_a_completion_leg() -> None:

@@ -1,0 +1,1 @@
+Dear Customer, the nominee details have been updated successfully for the Customer ID XXXXXXXX00. Click the link https://example.invalid/x to view.
