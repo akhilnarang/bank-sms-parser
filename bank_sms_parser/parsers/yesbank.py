@@ -342,11 +342,13 @@ class YesbankAccountImpsRefAlertParser(BaseSmsParser):
 
     Yes Bank sends this message beside the IMPS alert with the balance. Both
     report one event, and they share the reference. The body has no time, no
-    balance and no name.
+    balance and no name. The message arrives within seconds of the transfer,
+    so its arrival time gives the time of the event.
     """
 
     bank = "yesbank"
     email_type = "yesbank_account_imps_ref_alert"
+    event_time_source = "message_arrival"
 
     _PATTERN = re.compile(
         r"^Your\s+a/c\s+no\.\s+(?P<account>X+\d+)\s+is\s+"

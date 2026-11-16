@@ -2625,6 +2625,20 @@ def test_idfc_asba_notices_are_recognized_stubs(fixture) -> None:
 
 
 @pytest.mark.parametrize(
+    ("fixture", "source"),
+    [
+        ("account_imps_ref_credit", "message_arrival"),
+        ("account_imps_credit", "body"),
+    ],
+)
+def test_yesbank_imps_time_source(fixture: str, source: str) -> None:
+    """The reference-only IMPS SMS has no time, so it declares its arrival
+    time. The consumer then gives it the narrow arrival window."""
+    result = parse_sms("yesbank", _read(f"yesbank/{fixture}.txt"))
+    assert result.event_time_source == source
+
+
+@pytest.mark.parametrize(
     "fixture",
     [
         "limited_transfer",
