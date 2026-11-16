@@ -73,6 +73,10 @@ class AxisCcTransactionAlertParser(BaseSmsParser):
     stamp, and the trailing "Avl Limit: INR" available-credit line. The
     available credit limit is stored in ``balance`` (a credit card has no
     account balance). ``channel`` is ``card`` — a POS/online swipe.
+
+    Axis also sends the same alert on one line, with a whole-rupee amount:
+        "Spent INR 1234 using Axis Bank Credit Card no. XX0000 on 16-11-26
+         01:17:02 IST at SAMPLE MERCHANT. Avl limit: INR 99999. ..."
     """
 
     bank = "axis"
@@ -85,6 +89,14 @@ class AxisCcTransactionAlertParser(BaseSmsParser):
         r"(?P<merchant>.+?)\s+"
         r"Avl\s+Limit:\s+INR\s+(?P<limit>[\d,]+(?:\.\d+)?)"
     )
+    _INLINE_PATTERN = re.compile(
+        r"Spent\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+using\s+Axis\s+Bank\s+Credit\s+"
+        r"Card\s+no\.\s+(?P<card>XX\d+)\s+"
+        r"on\s+(?P<datetime>\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+IST\s+"
+        r"at\s+(?P<merchant>.+?)\.\s+"
+        r"Avl\s+limit:\s+INR\s+(?P<limit>[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
 
     def parse(
         self,
@@ -94,7 +106,9 @@ class AxisCcTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
-        if not (match := self._PATTERN.search(text)):
+        if not (
+            match := self._PATTERN.search(text) or self._INLINE_PATTERN.search(text)
+        ):
             raise ParseError("Axis CC transaction alert pattern did not match")
         dt = parse_datetime(match.group("datetime"))
         return ParsedSms(

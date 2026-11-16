@@ -204,6 +204,13 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
          repayment of IDFC FIRST Bank Credit Card ending XX1111 on
          08/11/26. Your updated account balance is INR 9,999.99. ..."
 
+    6) Debit card spend anchored on ``spent Rs.X on your IDFC FIRST Bank
+       Debit Card at``. The body names the merchant and the new balance,
+       but no account mask. ``channel="card"``:
+        "Dear Customer, you have spent Rs.1,234.00 on your IDFC FIRST Bank
+         Debit Card at SAMPLE MERCHANT on 13/11/26. Your new balance is
+         Rs.9,999.99. ..."
+
     Each regex is anchored on its discriminating clause so the shapes
     cannot accidentally match each other.
     """
@@ -250,6 +257,13 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         r"Your\s+updated\s+account\s+balance\s+is\s+INR\s+(?P<balance>[\d,]+(?:\.\d+)?)"
     )
 
+    _DEBIT_CARD_SPEND_PATTERN = re.compile(
+        r"you\s+have\s+spent\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+on\s+your\s+"
+        r"IDFC\s+FIRST\s+Bank\s+Debit\s+Card\s+at\s+(?P<merchant>.+?)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{2})\.\s*"
+        r"Your\s+new\s+balance\s+is\s+Rs\.\s*(?P<balance>[\d,]+(?:\.\d+)?)"
+    )
+
     def parse(
         self,
         body: str,
@@ -258,6 +272,24 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
+
+        if match := self._DEBIT_CARD_SPEND_PATTERN.search(text):
+            return ParsedSms(
+                email_type=self.email_type,
+                bank=self.bank,
+                transaction=SmsTransactionAlert(
+                    direction="debit",
+                    amount=Money(
+                        amount=parse_amount(match.group("amount")), currency="INR"
+                    ),
+                    transaction_date=parse_date(match.group("date")),
+                    counterparty=match.group("merchant").strip(),
+                    channel="card",
+                    balance=Money(
+                        amount=parse_amount(match.group("balance")), currency="INR"
+                    ),
+                ),
+            )
 
         if match := self._SPEND_CARD_PATTERN.search(text):
             return self._build(
@@ -333,8 +365,8 @@ class IdfcAccountTransactionAlertParser(BaseSmsParser):
 
         raise ParseError(
             "IDFC account transaction alert: no known pattern matched "
-            "(tried card spend, UPI debit, generic debit, merchant debit, "
-            "card repayment)"
+            "(tried debit card spend, card spend, UPI debit, generic debit, "
+            "merchant debit, card repayment)"
         )
 
     def _build(
