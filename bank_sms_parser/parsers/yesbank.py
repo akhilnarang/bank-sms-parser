@@ -2,11 +2,17 @@
 
 import datetime
 import re
+from typing import Literal
 
 from bank_sms_parser.exceptions import ParseError
 from bank_sms_parser.models import Money, ParsedSms, SmsTransactionAlert
 from bank_sms_parser.parsers.base import BankSmsParser, BaseSmsParser
-from bank_sms_parser.parsing import normalize_whitespace, parse_amount, parse_datetime
+from bank_sms_parser.parsing import (
+    normalize_whitespace,
+    parse_amount,
+    parse_date,
+    parse_datetime,
+)
 
 
 class YesbankAccountChequeDepositAlertParser(BaseSmsParser):
@@ -223,10 +229,180 @@ class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
         )
 
 
+class YesbankAccountImpsAlertParser(BaseSmsParser):
+    """Parse a Yes Bank account IMPS alert that carries the balance.
+
+    Samples (synthetic):
+        "INR 12,345.00 credited to YES BANK Ac X0000 on 01JAN26 10:20.
+         IMPS:600000000000/Mr SAMPLE NAME. Bal INR 23,456.78."
+        "YES BANK Ac X0000 debited for INR 12,345.00 on 01JAN26 10:20.
+         IMPS:600000000000/Mr SAMPLE NAME. Bal INR 23,456.78. Not U? ..."
+
+    The body carries the amount, the account mask, the event date and time,
+    the IMPS reference, the other party's name and the balance. The bank can
+    cut the name short. The parser drops the honorific from the name.
+    """
+
+    bank = "yesbank"
+    email_type = "yesbank_account_imps_alert"
+
+    _TAIL = (
+        r"on\s+(?P<date>\d{2}[A-Za-z]{3}\d{2})\s+(?P<time>\d{2}:\d{2})\.\s+"
+        r"IMPS:(?P<ref>\d{12})/(?P<name>.+?)\.\s+"
+        r"Bal\s+INR\s+(?P<balance>[\d,]+\.\d{2})\."
+    )
+    _PATTERNS: tuple[tuple[Literal["credit", "debit"], re.Pattern[str]], ...] = (
+        (
+            "credit",
+            re.compile(
+                r"^INR\s+(?P<amount>[\d,]+\.\d{2})\s+credited\s+to\s+YES\s+BANK\s+Ac\s+"
+                r"(?P<account>X+\d+)\s+" + _TAIL,
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "debit",
+            re.compile(
+                r"^YES\s+BANK\s+Ac\s+(?P<account>X+\d+)\s+debited\s+for\s+INR\s+"
+                r"(?P<amount>[\d,]+\.\d{2})\s+" + _TAIL,
+                re.IGNORECASE,
+            ),
+        ),
+    )
+    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        """Parse one Yes Bank IMPS alert with a balance.
+
+        Args:
+            body: The SMS body text.
+            sender: The optional TRAI sender ID.
+            received_at: The optional UTC arrival time.
+
+        Returns:
+            The parsed message with a credit or debit transaction.
+
+        Raises:
+            ParseError: If the body does not match the IMPS alert shape.
+        """
+        text = normalize_whitespace(body)
+        found = next(
+            (
+                (direction, match)
+                for direction, pattern in self._PATTERNS
+                if (match := pattern.search(text))
+            ),
+            None,
+        )
+        if found is None:
+            raise ParseError("Yes Bank IMPS alert pattern did not match")
+        direction, match = found
+        try:
+            dt = datetime.datetime.strptime(
+                f"{match.group('date')} {match.group('time')}", "%d%b%y %H:%M"
+            )
+        except ValueError as exc:
+            raise ParseError(f"Yes Bank IMPS alert date: {exc}") from exc
+        name = self._HONORIFIC.sub("", match.group("name")).strip()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction=direction,
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=dt.date(),
+                transaction_time=dt.time(),
+                counterparty=name or None,
+                account_mask=match.group("account"),
+                reference_number=match.group("ref"),
+                channel="imps",
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+            ),
+        )
+
+
+class YesbankAccountImpsRefAlertParser(BaseSmsParser):
+    """Parse a Yes Bank account IMPS alert that names only the reference.
+
+    Samples (synthetic):
+        "Your a/c no. XXXXXXXX0000 is credited by Rs.12345.00 on 01-01-26
+         (IMPS Ref no 600000000000). Warm Regards, YES Bank"
+        "Your a/c no. XXXXXXXX0000 is debited for Rs.12345.00 on 01-01-26 and
+         a/c XXXXXXXX credited (IMPS Ref no 600000000000). Warm Regards, YES Bank"
+
+    Yes Bank sends this message beside the IMPS alert with the balance. Both
+    report one event, and they share the reference. The body has no time, no
+    balance and no name.
+    """
+
+    bank = "yesbank"
+    email_type = "yesbank_account_imps_ref_alert"
+
+    _PATTERN = re.compile(
+        r"^Your\s+a/c\s+no\.\s+(?P<account>X+\d+)\s+is\s+"
+        r"(?P<verb>credited\s+by|debited\s+for)\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+(?:and\s+a/c\s+X*\d*\s+credited\s+)?"
+        r"\(IMPS\s+Ref\s+no\s+(?P<ref>\d{12})\)",
+        re.IGNORECASE,
+    )
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        """Parse one Yes Bank IMPS alert with only the reference.
+
+        Args:
+            body: The SMS body text.
+            sender: The optional TRAI sender ID.
+            received_at: The optional UTC arrival time.
+
+        Returns:
+            The parsed message with a credit or debit transaction.
+
+        Raises:
+            ParseError: If the body does not match the IMPS reference shape.
+        """
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.search(text)):
+            raise ParseError("Yes Bank IMPS reference pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit"
+                if match.group("verb").lower().startswith("credited")
+                else "debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                account_mask=match.group("account"),
+                reference_number=match.group("ref"),
+                channel="imps",
+            ),
+        )
+
+
 _PARSERS: tuple[BaseSmsParser, ...] = (
     YesbankAccountChequeDepositAlertParser(),
     YesbankAccountRtgsDebitAlertParser(),
     YesbankAccountNeftCreditAlertParser(),
+    YesbankAccountImpsAlertParser(),
+    YesbankAccountImpsRefAlertParser(),
 )
 
 
