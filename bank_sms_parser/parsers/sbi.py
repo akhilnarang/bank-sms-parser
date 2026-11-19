@@ -174,6 +174,61 @@ class SbiAccountImpsCreditAlertParser(BaseSmsParser):
         )
 
 
+class SbiAccountNeftCreditAlertParser(BaseSmsParser):
+    """SBI savings account inbound NEFT credit.
+
+    Sample::
+
+        "Dear Customer, INR 12,345.00 credited to your A/c No XX0000 on
+         01/01/2026 through NEFT with UTR SAMP0000X0000000 by Mr. SAMPLE
+         NAME, INFO: BATCHID:0000-SBI"
+
+    The UTR is the reference, so a transfer from one of the user's own
+    accounts dedupes against the sending bank's debit. The parser drops the
+    honorific from the payer name. The "-SBI" trailer is required, so a body
+    cut short does not parse.
+    """
+
+    bank = "sbi"
+    email_type = "sbi_account_neft_credit_alert"
+
+    _PATTERN = re.compile(
+        r"Dear\s+Customer,\s+INR\s+(?P<amount>[\d,]+\.\d{2})\s+"
+        r"credited\s+to\s+your\s+A/c\s+No\s+(?P<account>X+\d+)\s+"
+        r"on\s+(?P<date>\d{2}/\d{2}/\d{4})\s+through\s+NEFT\s+"
+        r"with\s+UTR\s+(?P<ref>[A-Z0-9]{8,})\s+by\s+(?P<sender>.+?),\s+"
+        r"INFO:\s*.*?-SBI\s*",
+        re.IGNORECASE,
+    )
+    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
+
+    def parse(
+        self,
+        body: str,
+        *,
+        sender: str | None = None,
+        received_at: datetime.datetime | None = None,
+    ) -> ParsedSms:
+        text = normalize_whitespace(body)
+        if not (match := self._PATTERN.fullmatch(text)):
+            raise ParseError("SBI account NEFT credit pattern did not match")
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=self._HONORIFIC.sub("", match.group("sender").strip()),
+                reference_number=match.group("ref").upper(),
+                account_mask=match.group("account"),
+                channel="neft",
+            ),
+        )
+
+
 class SbiAccountUpiDebitAlertParser(BaseSmsParser):
     """SBI savings/current account outbound UPI debit.
 
@@ -561,6 +616,7 @@ _PARSERS: tuple[BaseSmsParser, ...] = (
     # IMPS inbound credit: unique "linked to mobile ... (IMPS Ref# ...)"
     # anchor; cannot collide with the "transfer from ... Ref No" shape.
     SbiAccountImpsCreditAlertParser(),
+    SbiAccountNeftCreditAlertParser(),
     # UPI debit: unique "Dear UPI user A/C ... debited by" anchor.
     SbiAccountUpiDebitAlertParser(),
 )

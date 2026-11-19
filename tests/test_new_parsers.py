@@ -1097,6 +1097,20 @@ def _assert_matches(parsed, expected: dict) -> None:
         ),
         (
             "sbi",
+            "sbi/account_neft_credit.txt",
+            {
+                "email_type": "sbi_account_neft_credit_alert",
+                "direction": "credit",
+                "amount": Decimal("12345.00"),
+                "account_mask": "XX0000",
+                "counterparty": "SAMPLE NAME",
+                "reference_number": "SAMP0000X0000000",
+                "channel": "neft",
+                "transaction_date": datetime.date(2026, 1, 1),
+            },
+        ),
+        (
+            "sbi",
             "sbi/account_upi_debit.txt",
             {
                 "email_type": "sbi_account_upi_debit_alert",
@@ -2668,9 +2682,13 @@ def test_sbi_account_credit_shapes_stay_distinct() -> None:
 
 @pytest.mark.parametrize(
     "fixture",
-    ["sbi/cc_reversal.txt", "sbi/cc_payment_provisional.txt"],
+    [
+        "sbi/cc_reversal.txt",
+        "sbi/cc_payment_provisional.txt",
+        "sbi/account_neft_credit.txt",
+    ],
 )
-def test_sbi_truncated_card_credit_raises_parse_error(fixture: str) -> None:
+def test_sbi_truncated_credit_raises_parse_error(fixture: str) -> None:
     """A body cut short at the end must not parse. A cut can drop a year
     digit or the last digits of an amount and still leave a match."""
     body = _read(fixture).rstrip()[:-2]
