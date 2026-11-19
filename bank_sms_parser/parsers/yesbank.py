@@ -162,7 +162,7 @@ class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
 
     The body carries the amount, the account mask, the event date and time,
     the NEFT reference, the payer name and the balance. The bank can cut the
-    payer name short. The parser drops the honorific from the name.
+    payer name short. The parser keeps the name as sent, with any title.
     """
 
     bank = "yesbank"
@@ -176,7 +176,6 @@ class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
         r"Bal\s+INR\s+(?P<balance>[\d,]+\.\d{2})\.\s*$",
         re.IGNORECASE,
     )
-    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
 
     def parse(
         self,
@@ -207,7 +206,7 @@ class YesbankAccountNeftCreditAlertParser(BaseSmsParser):
             )
         except ValueError as exc:
             raise ParseError(f"Yes Bank NEFT credit date: {exc}") from exc
-        name = self._HONORIFIC.sub("", match.group("name")).strip()
+        name = match.group("name").strip()
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
@@ -240,7 +239,7 @@ class YesbankAccountImpsAlertParser(BaseSmsParser):
 
     The body carries the amount, the account mask, the event date and time,
     the IMPS reference, the other party's name and the balance. The bank can
-    cut the name short. The parser drops the honorific from the name.
+    cut the name short. The parser keeps the name as sent, with any title.
     """
 
     bank = "yesbank"
@@ -269,7 +268,6 @@ class YesbankAccountImpsAlertParser(BaseSmsParser):
             ),
         ),
     )
-    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
 
     def parse(
         self,
@@ -309,7 +307,7 @@ class YesbankAccountImpsAlertParser(BaseSmsParser):
             )
         except ValueError as exc:
             raise ParseError(f"Yes Bank IMPS alert date: {exc}") from exc
-        name = self._HONORIFIC.sub("", match.group("name")).strip()
+        name = match.group("name").strip()
         return ParsedSms(
             email_type=self.email_type,
             bank=self.bank,
