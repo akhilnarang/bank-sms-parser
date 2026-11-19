@@ -1103,7 +1103,7 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "direction": "credit",
                 "amount": Decimal("12345.00"),
                 "account_mask": "XX0000",
-                "counterparty": "SAMPLE NAME",
+                "counterparty": "Mr. SAMPLE NAME",
                 "reference_number": "SAMP0000X0000000",
                 "channel": "neft",
                 "transaction_date": datetime.date(2026, 1, 1),

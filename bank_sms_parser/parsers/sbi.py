@@ -184,9 +184,10 @@ class SbiAccountNeftCreditAlertParser(BaseSmsParser):
          NAME, INFO: BATCHID:0000-SBI"
 
     The UTR is the reference, so a transfer from one of the user's own
-    accounts dedupes against the sending bank's debit. The parser drops the
-    honorific from the payer name. The "-SBI" trailer is required, so a body
-    cut short does not parse.
+    accounts dedupes against the sending bank's debit. The payer name is kept
+    as sent. A title such as "Mr." is part of the name that the sending bank
+    holds, and the SBI email for the same credit shows it too. The "-SBI"
+    trailer is required, so a body cut short does not parse.
     """
 
     bank = "sbi"
@@ -200,7 +201,6 @@ class SbiAccountNeftCreditAlertParser(BaseSmsParser):
         r"INFO:\s*.*?-SBI\s*",
         re.IGNORECASE,
     )
-    _HONORIFIC = re.compile(r"^(?:Mr|Mrs|Ms|Miss|Dr|M/s)\.?\s+", re.IGNORECASE)
 
     def parse(
         self,
@@ -221,7 +221,7 @@ class SbiAccountNeftCreditAlertParser(BaseSmsParser):
                     amount=parse_amount(match.group("amount")), currency="INR"
                 ),
                 transaction_date=parse_date(match.group("date")),
-                counterparty=self._HONORIFIC.sub("", match.group("sender").strip()),
+                counterparty=match.group("sender").strip(),
                 reference_number=match.group("ref").upper(),
                 account_mask=match.group("account"),
                 channel="neft",
