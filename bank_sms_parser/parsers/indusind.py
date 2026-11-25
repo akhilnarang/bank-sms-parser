@@ -18,7 +18,7 @@ from bank_sms_parser.parsing import (
 class IndusindAccountTransactionAlertParser(BaseSmsParser):
     """IndusInd savings/current-account transaction alert.
 
-    Three body shapes share this event type:
+    Four body shapes share this event type:
 
     1) UPI alert (carries no in-body date — uses ``received_at`` fallback):
         "A/C *XX0000 credited by Rs 12345.00 from VPA@bank.
@@ -38,6 +38,15 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
        The account-mask format here uses a 3-digit prefix + ``***`` +
        a 6-digit suffix (distinct from the ``*XX####`` UPI form and the
        all-X IMPS form), and is preserved verbatim.
+
+    4) Credit with a narration (no in-body date or balance — uses
+       ``received_at`` fallback):
+        "Your IndusInd Account XXXXXXXX0000 has been credited for INR
+         1234.56 towards N/SAMP000000000000/SAMP0000001/Sample Payer.
+         Call 18602677777 to report issue-IndusInd Bank"
+       A narration ``N/<UTR>/<IFSC>/<name>`` is a NEFT credit. The bank cuts
+       the name short, and the name can hold a "/". Any other narration is
+       kept whole as the counterparty.
     """
 
     bank = "indusind"
@@ -55,6 +64,13 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
         r"on\s+(?P<date>\d{2}-\d{2}-\d{2})\s+"
         r"and\s+account\s+(?P<dest>X+\d+)/(?P<dest_name>[^.]+?)\s+will\s+be\s+credited\.\s*"
         r"\(IMPS\s+Ref\s+no\.\s*(?P<ref>\d+)\)"
+    )
+
+    _NARRATION_CREDIT_PATTERN = re.compile(
+        r"Your\s+IndusInd\s+Account\s+(?P<account>X+\d+)\s+has\s+been\s+"
+        r"credited\s+for\s+INR\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"towards\s+(?P<narration>.+?)\.\s+Call\s",
+        re.IGNORECASE,
     )
 
     _DC_PURCHASE_PATTERN = re.compile(
@@ -81,6 +97,9 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
 
         if match := self._DC_PURCHASE_PATTERN.search(text):
             return self._build_dc_purchase(match, received_at)
+
+        if match := self._NARRATION_CREDIT_PATTERN.search(text):
+            return self._build_narration_credit(match, received_at)
 
         raise ParseError("IndusInd account transaction alert: no known pattern matched")
 
@@ -130,6 +149,52 @@ class IndusindAccountTransactionAlertParser(BaseSmsParser):
                 counterparty=f"Acct {match.group('dest')}/{match.group('dest_name').strip()}",
                 reference_number=match.group("ref"),
                 channel="imps",
+                account_mask=match.group("account"),
+            ),
+        )
+
+    def _build_narration_credit(
+        self,
+        match: re.Match[str],
+        received_at: datetime.datetime | None,
+    ) -> ParsedSms:
+        """Build the credit from a narration credit alert.
+
+        Args:
+            match: A match of ``_NARRATION_CREDIT_PATTERN``.
+            received_at: The SMS arrival time in UTC, or ``None``.
+
+        Returns:
+            The parsed credit.
+        """
+        narration = match.group("narration").strip()
+        counterparty: str | None = narration
+        reference: str | None = None
+        channel: str | None = None
+        if narration.upper().startswith("N/"):
+            channel = "neft"
+            parts = [p.strip() for p in narration.split("/", 3)]
+            reference = parts[1] or None
+            counterparty = parts[3] if len(parts) == 4 and parts[3] else None
+        txn_date: datetime.date | None = None
+        txn_time: datetime.time | None = None
+        if received_at is not None:
+            ist = received_at_to_ist(received_at)
+            txn_date = ist.date()
+            txn_time = ist.time()
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="credit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=txn_date,
+                transaction_time=txn_time,
+                counterparty=counterparty,
+                reference_number=reference,
+                channel=channel,
                 account_mask=match.group("account"),
             ),
         )

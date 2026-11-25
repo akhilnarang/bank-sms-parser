@@ -30,6 +30,14 @@ class AuAccountDebitAlertParser(BaseSmsParser):
     transfer and its currency conversion fee. These debits have the same order
     ID, so the order ID is not a reference: it would merge them. The parser
     keeps the description as the counterparty and sets no reference.
+
+    A compact layout carries a rail and its reference:
+        "Dr INR 1,234.00 - AU A/c X0000 25-NOV-2026
+         NEFT DR-AUBLN00000000000000000000 -SAMPLE PAYEE
+         Bal INR 0.00
+         Fraud? Call 180012001200/SMS BLOCK <CUSTID> to 5676767"
+
+    Here the rail sets the channel and the number after it is the reference.
     """
 
     bank = "au"
@@ -43,6 +51,14 @@ class AuAccountDebitAlertParser(BaseSmsParser):
         re.IGNORECASE,
     )
 
+    _RAIL_PATTERN = re.compile(
+        rf"Dr\s+INR\s*(?P<amount>{_AMOUNT})\s+-\s+AU\s+A/c\s+(?P<mask>X+\d+)\s+"
+        r"(?P<date>\d{2}-[A-Z]{3}-\d{4})\s+"
+        r"(?P<channel>IMPS|NEFT|RTGS|UPI)\s+DR-(?P<ref>\w+)\s+-(?P<counterparty>.+?)\s+"
+        rf"Bal\s+INR\s*(?P<balance>{_AMOUNT})",
+        re.IGNORECASE,
+    )
+
     def parse(
         self,
         body: str,
@@ -51,6 +67,8 @@ class AuAccountDebitAlertParser(BaseSmsParser):
         received_at: datetime.datetime | None = None,
     ) -> ParsedSms:
         text = normalize_whitespace(body)
+        if match := self._RAIL_PATTERN.search(text):
+            return self._build_rail(match)
         if not (match := self._PATTERN.search(text)):
             raise ParseError("AU account debit pattern did not match")
         narration = match.group("narration").strip()
@@ -66,6 +84,34 @@ class AuAccountDebitAlertParser(BaseSmsParser):
                 ),
                 transaction_date=parse_date(match.group("date")),
                 counterparty=narration,
+                balance=Money(
+                    amount=parse_amount(match.group("balance")), currency="INR"
+                ),
+                account_mask=match.group("mask"),
+            ),
+        )
+
+    def _build_rail(self, match: re.Match[str]) -> ParsedSms:
+        """Build the debit from the compact layout with a rail reference.
+
+        Args:
+            match: A match of ``_RAIL_PATTERN``.
+
+        Returns:
+            The parsed debit.
+        """
+        return ParsedSms(
+            email_type=self.email_type,
+            bank=self.bank,
+            transaction=SmsTransactionAlert(
+                direction="debit",
+                amount=Money(
+                    amount=parse_amount(match.group("amount")), currency="INR"
+                ),
+                transaction_date=parse_date(match.group("date")),
+                counterparty=match.group("counterparty").strip(),
+                reference_number=match.group("ref"),
+                channel=match.group("channel").lower(),
                 balance=Money(
                     amount=parse_amount(match.group("balance")), currency="INR"
                 ),

@@ -222,6 +222,23 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "transaction_date": datetime.date(2026, 11, 16),
             },
         ),
+        # AU compact debit: the rail sets the channel and its number is the
+        # reference.
+        (
+            "au",
+            "au/account_neft_debit.txt",
+            {
+                "email_type": "au_account_debit_alert",
+                "direction": "debit",
+                "amount": Decimal("1234.00"),
+                "account_mask": "X0000",
+                "counterparty": "SAMPLE PAYEE",
+                "reference_number": "AUBLN00000000000000000000",
+                "channel": "neft",
+                "balance": Decimal("0.00"),
+                "transaction_date": datetime.date(2026, 11, 25),
+            },
+        ),
         (
             "au",
             "au/account_debit_fee.txt",
@@ -431,6 +448,20 @@ def _assert_matches(parsed, expected: dict) -> None:
                 "reference_number": "000000000000",
                 "channel": "imps",
                 "transaction_date": datetime.date(2026, 5, 3),
+            },
+        ),
+        # IndusInd narration credit: "N/<UTR>/<IFSC>/<name>" is a NEFT credit.
+        (
+            "indusind",
+            "indusind/account_neft_credit.txt",
+            {
+                "email_type": "indusind_account_transaction_alert",
+                "direction": "credit",
+                "amount": Decimal("1234.56"),
+                "account_mask": "XXXXXXXX0000",
+                "counterparty": "Sample Payer",
+                "reference_number": "SAMP000000000000",
+                "channel": "neft",
             },
         ),
         # IndusInd credit-card spend (distinct from the account UPI/IMPS shapes):
